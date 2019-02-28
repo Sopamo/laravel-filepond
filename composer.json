@@ -1,0 +1,37 @@
+{
+  "name": "sopamo/laravel-filepond",
+  "description": "Laravel backend module for filepond uploads",
+  "license": "MIT",
+  "keywords": [
+    "laravel",
+    "php",
+    "filepond",
+    "upload",
+    "image"
+  ],
+  "authors": [
+    {
+      "name": "Paul Mohr",
+      "email": "p.mohr@sopamo.de"
+    }
+  ],
+  "require": {
+    "php": "^7.0",
+    "illuminate/support": "~5.5.0|~5.6.0|~5.7.0|~5.8.0",
+    "illuminate/contracts": "~5.5.0|~5.6.0|~5.7.0|~5.8.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Sopamo\\LaravelFilepond\\": "src/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Sopamo\\LaravelFilepond\\LaravelFilepondServiceProvider"
+      ]
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}
