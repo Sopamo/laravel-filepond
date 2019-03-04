@@ -29,7 +29,7 @@ class FilepondController extends BaseController
      */
     public function upload(Request $request)
     {
-        $file = $request->file('file');
+        $file = $request->file('file')[0];
 
         $filePath = tempnam(config('filepond.temporary_files_path'), "laravel-filepond");
         $filePathParts = pathinfo($filePath);
