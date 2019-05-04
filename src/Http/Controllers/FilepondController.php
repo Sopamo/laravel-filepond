@@ -37,7 +37,11 @@ class FilepondController extends BaseController
         if(!$file->move($filePathParts['dirname'], $filePathParts['basename'])) {
             return Response::make('Could not save file', 500);
         }
-        return Response::make($this->filepond->getServerIdFromPath($filePath), 200);
+
+        $serverId = $this->filepond->getServerIdFromPath($filePath);
+        $this->filepond->saveOriginalFilename($file, $serverId);
+
+        return Response::make($serverId, 200);
     }
 
     /**
@@ -49,6 +53,7 @@ class FilepondController extends BaseController
      */
     public function delete(Request $request) {
         $filePath = $this->filepond->getPathFromServerId($request->getContent());
+        $this->filepond->deleteOriginalFileNameByServerId($request->getContent());
         if(unlink($filePath)) {
             return Response::make('', 200);
         } else {
