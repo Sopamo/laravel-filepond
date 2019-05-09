@@ -31,12 +31,17 @@ class FilepondController extends BaseController
     {
         $file = $request->file('file')[0];
 
-        $filePath = tempnam(config('filepond.temporary_files_path'), "laravel-filepond");
+        $tempPath = config('filepond.temporary_files_path');
+
+        $filePath = tempnam($tempPath, 'laravel-filepond');
+        $filePath .= '.' . $file->extension();
+
         $filePathParts = pathinfo($filePath);
 
-        if(!$file->move($filePathParts['dirname'], $filePathParts['basename'])) {
+        if (!$file->move($filePathParts['dirname'], $filePathParts['basename'])) {
             return Response::make('Could not save file', 500);
         }
+
         return Response::make($this->filepond->getServerIdFromPath($filePath), 200);
     }
 
@@ -47,7 +52,8 @@ class FilepondController extends BaseController
      * @param Request $request
      * @return mixed
      */
-    public function delete(Request $request) {
+    public function delete(Request $request)
+    {
         $filePath = $this->filepond->getPathFromServerId($request->getContent());
         if(unlink($filePath)) {
             return Response::make('', 200);

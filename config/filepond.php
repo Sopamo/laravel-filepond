@@ -19,6 +19,5 @@ return [
     | When initially uploading the files we store them in this path
     |
     */
-    'temporary_files_path' => sys_get_temp_dir(),
-
+    'temporary_files_path' => realpath(sys_get_temp_dir()),
 ];
