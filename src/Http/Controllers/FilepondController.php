@@ -29,7 +29,7 @@ class FilepondController extends BaseController
      */
     public function upload(Request $request)
     {
-        $file = $request->file('file')[0];
+        $file = $request->file(config('filepond.input_name'))[0];
 
         $tempPath = config('filepond.temporary_files_path');
 
