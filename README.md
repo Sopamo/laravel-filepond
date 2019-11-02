@@ -27,7 +27,7 @@ If you need to edit the configuration, you can publish it with:
 php artisan vendor:publish --provider="Sopamo\LaravelFilepond\LaravelFilepondServiceProvider"
 ```
 
-Included in this repo is a Filepond upload controller which is where you should direct uploads to. Upon upload the controller will return the `$serverId` which can be used in your own controller to move the file from temporary storage to somewhere permanent using the `getPathFromServerId()` function.
+Included in this repo is a Filepond upload controller which is where you should direct uploads to. Upon upload the controller will return the `$serverId` which Filepond will send via a hidden input field (same name as the img) to be used in your own controller to move the file from temporary storage to somewhere permanent using the `getPathFromServerId($request->input('image'))` function.
 
 ```php
 // Get the temporary path using the serverId returned by the upload function in `FilepondController.php`
@@ -45,13 +45,13 @@ Set at least the following Filepond configuration:
 
 ```javascript
 FilePond.setOptions({
-    server: {
-        url: '/api',
-	        process: '/upload',
-			headers: {
-			'X-CSRF-TOKEN': '{{ csrf_token() }}'
-		}
+  server: {
+    url: '/api',
+    process: '/upload',
+    headers: {
+      'X-CSRF-TOKEN': '{{ csrf_token() }}'
     }
+  }
 });
 ```
 
