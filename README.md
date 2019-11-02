@@ -46,8 +46,8 @@ Set at least the following Filepond configuration:
 ```javascript
 FilePond.setOptions({
   server: {
-    url: '/api',
-    process: '/upload',
+    url: '/filepond/api',
+    process: '/process',
     headers: {
       'X-CSRF-TOKEN': '{{ csrf_token() }}'
     }
