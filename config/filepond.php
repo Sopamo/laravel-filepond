@@ -20,4 +20,5 @@ return [
     |
     */
     'temporary_files_path' => realpath(sys_get_temp_dir()),
+    'input_name' => 'file',
 ];
