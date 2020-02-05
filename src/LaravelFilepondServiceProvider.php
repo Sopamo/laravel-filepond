@@ -23,7 +23,7 @@ class LaravelFilepondServiceProvider extends ServiceProvider
     }
 
     /**
-     * Register the Horizon routes.
+     * Register Filepond routes.
      *
      * @return void
      */
