@@ -33,7 +33,7 @@ class Filepond
             throw new InvalidPathException();
         }
         $filePath = Crypt::decryptString($serverId);
-        if (! Str::startsWith($filePath, config('filepond.temporary_files_path'))) {
+        if (! Str::startsWith($filePath, storage_path('app/' . config('filepond.temporary_files_path')))) {
             throw new InvalidPathException();
         }
 

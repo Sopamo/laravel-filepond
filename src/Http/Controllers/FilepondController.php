@@ -38,20 +38,13 @@ class FilepondController extends BaseController
             ]);
         }
 
-        $tempPath = config('filepond.temporary_files_path');
-
-        $filePath = @tempnam($tempPath, 'laravel-filepond');
-        $filePath .= '.' . $file->getClientOriginalExtension();
-
-        $filePathParts = pathinfo($filePath);
-
-        if (! $file->move($filePathParts['dirname'], $filePathParts['basename'])) {
+        if (! ($newFile = $file->storeAs(config('filepond.temporary_files_path'), $file->getClientOriginalName()))) {
             return Response::make('Could not save file', 500, [
                 'Content-Type' => 'text/plain',
             ]);
         }
 
-        return Response::make($this->filepond->getServerIdFromPath($filePath), 200, [
+        return Response::make($this->filepond->getServerIdFromPath(storage_path('app/' . $newFile)), 200, [
             'Content-Type' => 'text/plain',
         ]);
     }
