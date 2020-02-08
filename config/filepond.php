@@ -19,6 +19,6 @@ return [
     | When initially uploading the files we store them in this path
     |
     */
-    'temporary_files_path' => realpath(sys_get_temp_dir()),
+    'temporary_files_path' => 'filepond',
     'input_name' => 'file',
 ];
