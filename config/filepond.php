@@ -19,6 +19,6 @@ return [
     | When initially uploading the files we store them in this path
     |
     */
-    'temporary_files_path' => 'filepond',
+    'temporary_files_path' => env('FILEPOND_TEMP_PATH', 'filepond'),
     'input_name' => 'file',
 ];
