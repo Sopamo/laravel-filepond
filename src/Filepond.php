@@ -3,6 +3,7 @@
 namespace Sopamo\LaravelFilepond;
 
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Sopamo\LaravelFilepond\Exceptions\InvalidPathException;
 
@@ -26,6 +27,7 @@ class Filepond
      * @param  string $serverId
      *
      * @return string
+     * @throws \Illuminate\Contracts\Filesystem\FileNotFoundException
      */
     public function getPathFromServerId($serverId)
     {
@@ -33,7 +35,7 @@ class Filepond
             throw new InvalidPathException();
         }
         $filePath = Crypt::decryptString($serverId);
-        if (! Str::startsWith($filePath, storage_path('app/' . config('filepond.temporary_files_path')))) {
+        if (! Str::startsWith($filePath, Storage::disk(config('filepond.temporary_files_disk', 'local'))->path(config('filepond.temporary_files_path', 'filepond')))) {
             throw new InvalidPathException();
         }
 

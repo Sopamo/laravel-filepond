@@ -5,6 +5,7 @@ namespace Sopamo\LaravelFilepond\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\Storage;
 use Sopamo\LaravelFilepond\Filepond;
 
 class FilepondController extends BaseController
@@ -30,21 +31,23 @@ class FilepondController extends BaseController
     public function upload(Request $request)
     {
         $input = $request->file(config('filepond.input_name'));
-        $file = is_array($input) ? $input[0] : $input;
-        
-        if($input === null){
-            return Response::make(config('filepond.input_name'). ' is required', 422, [
+
+        if ($input === null) {
+            return Response::make(config('filepond.input_name') . ' is required', 422, [
                 'Content-Type' => 'text/plain',
             ]);
         }
 
-        if (! ($newFile = $file->storeAs(config('filepond.temporary_files_path'), $file->getClientOriginalName()))) {
+        $file = is_array($input) ? $input[0] : $input;
+        $disk = config('filepond.temporary_files_disk', 'local');
+
+        if (! ($newFile = $file->storeAs(config('filepond.temporary_files_path', 'filepond'), $file->getClientOriginalName(), $disk))) {
             return Response::make('Could not save file', 500, [
                 'Content-Type' => 'text/plain',
             ]);
         }
 
-        return Response::make($this->filepond->getServerIdFromPath(storage_path('app/' . $newFile)), 200, [
+        return Response::make($this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newFile)), 200, [
             'Content-Type' => 'text/plain',
         ]);
     }
