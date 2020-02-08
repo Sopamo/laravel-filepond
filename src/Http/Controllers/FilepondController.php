@@ -2,14 +2,13 @@
 
 namespace Sopamo\LaravelFilepond\Http\Controllers;
 
-use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\Response;
 use Sopamo\LaravelFilepond\Filepond;
 
 class FilepondController extends BaseController
 {
-
     /**
      * @var Filepond
      */
@@ -24,7 +23,8 @@ class FilepondController extends BaseController
      * Uploads the file to the temporary directory
      * and returns an encrypted path to the file
      *
-     * @param Request $request
+     * @param  Request $request
+     *
      * @return \Illuminate\Http\Response
      */
     public function upload(Request $request)
@@ -45,7 +45,7 @@ class FilepondController extends BaseController
 
         $filePathParts = pathinfo($filePath);
 
-        if (!$file->move($filePathParts['dirname'], $filePathParts['basename'])) {
+        if (! $file->move($filePathParts['dirname'], $filePathParts['basename'])) {
             return Response::make('Could not save file', 500, [
                 'Content-Type' => 'text/plain',
             ]);
@@ -60,13 +60,14 @@ class FilepondController extends BaseController
      * Takes the given encrypted filepath and deletes
      * it if it hasn't been tampered with
      *
-     * @param Request $request
+     * @param  Request $request
+     *
      * @return mixed
      */
     public function delete(Request $request)
     {
         $filePath = $this->filepond->getPathFromServerId($request->getContent());
-        if(unlink($filePath)) {
+        if (unlink($filePath)) {
             return Response::make('', 200, [
                 'Content-Type' => 'text/plain',
             ]);

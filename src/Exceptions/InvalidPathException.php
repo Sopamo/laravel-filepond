@@ -2,10 +2,11 @@
 
 namespace Sopamo\LaravelFilepond\Exceptions;
 
-class InvalidPathException extends \InvalidArgumentException implements LaravelFilepondException {
+class InvalidPathException extends \InvalidArgumentException implements LaravelFilepondException
+{
     /**
-     * @param string         $message
-     * @param int            $code
+     * @param  string $message
+     * @param  int $code
      */
     public function __construct(
         $message = 'The given file path was invalid',
