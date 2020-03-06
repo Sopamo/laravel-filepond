@@ -35,10 +35,9 @@ class LaravelFilepondServiceProvider extends ServiceProvider
     {
         Route::group([
             'prefix' => 'filepond',
-            'namespace' => 'Sopamo\LaravelFilepond\Http\Controllers',
             'middleware' => config('filepond.middleware', null),
         ], function () {
-            $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
+            $this->loadRoutesFrom(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'routes' . DIRECTORY_SEPARATOR . 'web.php');
         });
     }
 
