@@ -40,10 +40,14 @@ class FilepondController extends BaseController
         $filePathParts = pathinfo($filePath);
 
         if (!$file->move($filePathParts['dirname'], $filePathParts['basename'])) {
-            return Response::make('Could not save file', 500);
+            return Response::make('Could not save file', 500, [
+                'Content-Type' => 'text/plain',
+            ]);
         }
 
-        return Response::make($this->filepond->getServerIdFromPath($filePath), 200);
+        return Response::make($this->filepond->getServerIdFromPath($filePath), 200, [
+            'Content-Type' => 'text/plain',
+        ]);
     }
 
     /**
@@ -57,9 +61,13 @@ class FilepondController extends BaseController
     {
         $filePath = $this->filepond->getPathFromServerId($request->getContent());
         if(unlink($filePath)) {
-            return Response::make('', 200);
-        } else {
-            return Response::make('', 500);
+            return Response::make('', 200, [
+                'Content-Type' => 'text/plain',
+            ]);
         }
+
+        return Response::make('', 500, [
+            'Content-Type' => 'text/plain',
+        ]);
     }
 }
