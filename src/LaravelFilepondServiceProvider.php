@@ -9,6 +9,9 @@ class LaravelFilepondServiceProvider extends ServiceProvider
 {
     public function boot() {
         $this->registerRoutes();
+        $this->publishes([
+            $this->getConfigFile() => config_path('filepond.php'),
+        ], 'filepond');
     }
 
     /**
