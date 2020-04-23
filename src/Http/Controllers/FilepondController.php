@@ -59,6 +59,7 @@ class FilepondController extends BaseController
      * @param  Request $request
      *
      * @return mixed
+     * @throws \Illuminate\Contracts\Filesystem\FileNotFoundException
      */
     public function delete(Request $request)
     {
