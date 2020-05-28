@@ -32,7 +32,7 @@ class FilepondController extends BaseController
         $input = $request->file(config('filepond.input_name'));
         $file = is_array($input) ? $input[0] : $input;
         
-        if($input == null){
+        if($input === null){
             return Response::make(config('filepond.input_name'). ' is required', 422, [
                 'Content-Type' => 'text/plain',
             ]);
