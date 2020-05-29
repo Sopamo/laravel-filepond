@@ -17,13 +17,13 @@
 
 Require this package in the `composer.json` of your Laravel project.
 
-```php
+```bash
 composer require sopamo/laravel-filepond
 ```
 
 If you need to edit the configuration, you can publish it with:
 
-```php
+```bash
 php artisan vendor:publish --provider="Sopamo\LaravelFilepond\LaravelFilepondServiceProvider"
 ```
 
@@ -38,6 +38,10 @@ $path = $filepond->getPathFromServerId($serverId);
 $finalLocation = public_path('output.jpg');
 \File::move($path, $finalLocation);
 ```
+
+#### External storage
+
+You can use any [Laravel disk](https://laravel.com/docs/7.x/filesystem) as the storage for temporary files. If you use a different disk for temporary files and final location, you will need to copy the file from the temporary location to the new disk then delete the temporary file yourself.
 
 ### Filepond setup
 
