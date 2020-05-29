@@ -27,18 +27,29 @@ class Filepond
      * @param  string $serverId
      *
      * @return string
-     * @throws \Illuminate\Contracts\Filesystem\FileNotFoundException
      */
     public function getPathFromServerId($serverId)
     {
         if (! trim($serverId)) {
             throw new InvalidPathException();
         }
+
         $filePath = Crypt::decryptString($serverId);
-        if (! Str::startsWith($filePath, Storage::disk(config('filepond.temporary_files_disk', 'local'))->path(config('filepond.temporary_files_path', 'filepond')))) {
+        if (! Str::startsWith($filePath, $this->getBasePath())) {
             throw new InvalidPathException();
         }
 
         return $filePath;
+    }
+
+    /**
+     * Get the storage base path for files.
+     *
+     * @return string
+     */
+    public function getBasePath()
+    {
+        return Storage::disk(config('filepond.temporary_files_disk', 'local'))
+            ->path(config('filepond.temporary_files_path', 'filepond'));
     }
 }
