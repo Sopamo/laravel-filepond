@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Sopamo\LaravelFilepond\Filepond;
 
 class FilepondController extends BaseController
@@ -39,9 +40,10 @@ class FilepondController extends BaseController
         }
 
         $file = is_array($input) ? $input[0] : $input;
+        $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
 
-        if (! ($newFile = $file->storeAs(config('filepond.temporary_files_path', 'filepond'), $file->getClientOriginalName(), $disk))) {
+        if (! ($newFile = $file->storeAs($path . DIRECTORY_SEPARATOR . Str::random(), $file->getClientOriginalName(), $disk))) {
             return Response::make('Could not save file', 500, [
                 'Content-Type' => 'text/plain',
             ]);
@@ -59,7 +61,6 @@ class FilepondController extends BaseController
      * @param  Request $request
      *
      * @return mixed
-     * @throws \Illuminate\Contracts\Filesystem\FileNotFoundException
      */
     public function delete(Request $request)
     {
