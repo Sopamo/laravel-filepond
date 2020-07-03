@@ -33,7 +33,7 @@ class LaravelFilepondServiceProvider extends ServiceProvider
     protected function registerRoutes()
     {
         Route::group([
-            'prefix' => 'filepond',
+            'prefix' => config('filepond.prefix', 'filepond'),
             'namespace' => 'Sopamo\LaravelFilepond\Http\Controllers',
             'middleware' => config('filepond.middleware', null),
         ], function () {
