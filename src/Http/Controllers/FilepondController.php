@@ -41,7 +41,7 @@ class FilepondController extends BaseController
         $tempPath = config('filepond.temporary_files_path');
 
         $filePath = @tempnam($tempPath, 'laravel-filepond');
-        $filePath .= '.' . $file->extension();
+        $filePath .= '.' . $file->getClientOriginalExtension();
 
         $filePathParts = pathinfo($filePath);
 
