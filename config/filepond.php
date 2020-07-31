@@ -16,10 +16,10 @@ return [
     | Prefix
     |--------------------------------------------------------------------------
     |
-    | The prefix to add to our controller route
+    | The prefix to add to all filepond controller routes
     |
     */
-    'prefix' => 'filepond',
+    'route_prefix' => 'filepond',
 
     /*
     |--------------------------------------------------------------------------
