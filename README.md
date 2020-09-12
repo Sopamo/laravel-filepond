@@ -43,6 +43,8 @@ $finalLocation = public_path('output.jpg');
 
 You can use any [Laravel disk](https://laravel.com/docs/7.x/filesystem) as the storage for temporary files. If you use a different disk for temporary files and final location, you will need to copy the file from the temporary location to the new disk then delete the temporary file yourself.
 
+If you are using the default `local` disk, make sure the /storage/app/filepond directory exists in your project and is writable.
+
 ### Filepond setup
 
 Set at least the following Filepond configuration:
