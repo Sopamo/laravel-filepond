@@ -31,10 +31,17 @@ class FilepondController extends BaseController
      */
     public function upload(Request $request)
     {
-        $input = $request->file(config('filepond.input_name'));
+        if (!sizeof($request->all())) {
+            return Response::make('No file is present in request', 422, [
+                'Content-Type' => 'text/plain',
+            ]);            
+        }
+
+        $input_name = array_key_first($request->all());
+        $input = $request->file($input_name);
 
         if ($input === null) {
-            return Response::make(config('filepond.input_name') . ' is required', 422, [
+            return Response::make($input_name . ' is required', 422, [
                 'Content-Type' => 'text/plain',
             ]);
         }
