@@ -1,14 +1,14 @@
 
 
 <h1 align="center">
-Laravel FilePond Backend
+  Laravel FilePond Backend
 </h1>
 
 <p align="center">
-<strong>An all in one Laravel backend for <a href="https://pqina.nl/filepond/" target="_blank">FilePond</a></strong><br>
+  <strong>An all in one Laravel backend for <a href="https://pqina.nl/filepond/" target="_blank">FilePond</a></strong><br>
 </p>
 <p>
-We currently support the `process` and `revert` methods and are securing those via the Laravel encryption/decryption methods.
+    We currently support the `process` and `revert` methods and are securing those via the Laravel encryption/decryption methods.
 </p>
 
 ## :rocket: Be up and running in 2 minutes
@@ -51,13 +51,14 @@ Set at least the following Filepond configuration:
 
 ```javascript
 FilePond.setOptions({
-server: {
-url: '/filepond/api',
-process: '/process',
-revert: '/process',
-headers: {
-'X-CSRF-TOKEN': '{{ csrf_token() }}'
-}
-}
+  server: {
+    url: '/filepond/api',
+    process: '/process',
+    revert: '/process',
+    headers: {
+      'X-CSRF-TOKEN': '{{ csrf_token() }}'
+    }
+  }
 });
 ```
+
