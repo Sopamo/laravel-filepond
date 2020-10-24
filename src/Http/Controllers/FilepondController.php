@@ -40,7 +40,7 @@ class FilepondController extends BaseController
         if ($input === null) {
             // Chunk upload
             $newFile = Storage::disk($disk)
-                ->put($path . DIRECTORY_SEPARATOR . Str::random());
+                ->put($path . DIRECTORY_SEPARATOR . Str::random(), '');
 
             return Response::make($this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newFile)), 200, [
                 'Content-Type' => 'text/plain',
