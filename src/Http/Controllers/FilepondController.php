@@ -71,20 +71,26 @@ class FilepondController extends BaseController
         $id = $request->get('patch');
 
         // Load chunks directory
-        $filePath = $this->filepond->getPathFromServerId($id);
+        $path = $this->filepond->getPathFromServerId($id);
         $dir = $filePath;
 
-        // get patch data
+        // Get patch info
         $offset = $_SERVER['HTTP_UPLOAD_OFFSET'];
         $length = $_SERVER['HTTP_UPLOAD_LENGTH'];
-        // should be numeric values, else exit
-        if (!is_numeric($offset) || !is_numeric($length)) {
-            return http_response_code(400);
-        }
-        // get sanitized name
 
-        // write patch file for this request
-        file_put_contents($dir . '.patch.' . $offset, fopen('php://input', 'rb'));
+        // Validate patch info
+        if (!is_numeric($offset) || !is_numeric($length))
+            return http_response_code(400);
+
+        // Retrieve disk
+        $disk = config('filepond.temporary_files_disk', 'local');
+
+        // Store chunk
+        Storage::disk($disk)
+            ->path($path)
+            ->put('.patch.' . $offset, fopen('php://input', 'rb'));
+
+
         // calculate total size of patches
         $size = 0;
         $patch = glob($dir . '.patch.*');
