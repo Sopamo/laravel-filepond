@@ -4,7 +4,6 @@ namespace Sopamo\LaravelFilepond\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -40,8 +39,9 @@ class FilepondController extends BaseController
 
         if ($input === null) {
             // Chunk upload
-            $chunkFileName = md5(microtime());
-            $newFile = new File($path . DIRECTORY_SEPARATOR . Str::random(), $chunkFileName);
+            $newFile = Storage::disk($disk)
+                ->put($path . DIRECTORY_SEPARATOR . Str::random());
+
             return Response::make($this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newFile)), 200, [
                 'Content-Type' => 'text/plain',
             ]);
