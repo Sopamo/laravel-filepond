@@ -33,15 +33,18 @@ class FilepondController extends BaseController
     {
         $input = $request->file(config('filepond.input_name'));
 
-        if ($input === null) {
-            return Response::make(config('filepond.input_name') . ' is required', 422, [
-                'Content-Type' => 'text/plain',
-            ]);
-        }
-
         $file = is_array($input) ? $input[0] : $input;
         $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
+
+        if ($input === null) {
+            // Chunk upload
+            $chunkFileName = md5(microtime());
+            $newFile = new File($path . DIRECTORY_SEPARATOR . Str::random(), $chunkFileName);
+            return Response::make($this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newFile)), 200, [
+                'Content-Type' => 'text/plain',
+            ]);
+        }
 
         if (! ($newFile = $file->storeAs($path . DIRECTORY_SEPARATOR . Str::random(), $file->getClientOriginalName(), $disk))) {
             return Response::make('Could not save file', 500, [
