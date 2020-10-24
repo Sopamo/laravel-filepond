@@ -72,7 +72,6 @@ class FilepondController extends BaseController
 
         // Load chunks directory
         $path = $this->filepond->getPathFromServerId($id);
-        $dir = $filePath;
 
         // Get patch info
         $offset = $_SERVER['HTTP_UPLOAD_OFFSET'];
