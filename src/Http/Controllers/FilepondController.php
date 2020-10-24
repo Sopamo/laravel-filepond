@@ -89,17 +89,18 @@ class FilepondController extends BaseController
             ->path($path)
             ->put('.patch.' . $offset, fopen('php://input', 'rb'));
 
-
-        // calculate total size of patches
+        // Check total size of chunks
         $size = 0;
-        $patch = glob($path . '.patch.*');
-        foreach ($patch as $filename) {
-            $size += filesize($filename);
-        }
-        // if total size equals length of file we have gathered all patch files
-        if ($size == $length) {
+        $chunks = Storage::files($path);
+        foreach ($chunks as $chunk)
+            $size += $chunk->getSize();
+
+        // Check if upload finished
+        if ($size == $length)
+        {
             // create output file
             $file_handle = fopen($dir, 'wb');
+
             // write patches to file
             foreach ($patch as $filename) {
                 // get offset from filename
