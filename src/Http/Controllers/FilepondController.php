@@ -3,7 +3,9 @@
 namespace Sopamo\LaravelFilepond\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Routing\Controller as BaseController;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -37,15 +39,9 @@ class FilepondController extends BaseController
         $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
 
-        if ($input === null) {
-            // Chunk upload
-            $newDir = Storage::disk($disk)
-                ->makeDirectory($path . DIRECTORY_SEPARATOR . Str::random());
-
-            return Response::make($this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newDir)), 200, [
-                'Content-Type' => 'text/plain',
-            ]);
-        }
+        // Chunk upload
+        if ($input === null)
+            $file = new UploadedFile(tempnam('/tmp', 'filepond_'), Str::random());
 
         if (! ($newFile = $file->storeAs($path . DIRECTORY_SEPARATOR . Str::random(), $file->getClientOriginalName(), $disk))) {
             return Response::make('Could not save file', 500, [
@@ -65,13 +61,17 @@ class FilepondController extends BaseController
      */
     public function chunk(Request $request)
     {
-        error_reporting(E_ERROR);
-
         // Retrieve upload ID
         $id = $request->get('patch');
 
+        // Retrieve disk
+        $disk = config('filepond.temporary_files_disk', 'local');
+        $diskPath = Storage::disk($disk)
+            ->path('');
+
         // Load chunks directory
         $path = $this->filepond->getPathFromServerId($id);
+        $pathRelative = str_replace($diskPath, '', $path);
 
         // Get patch info
         $offset = $_SERVER['HTTP_UPLOAD_OFFSET'];
@@ -81,47 +81,55 @@ class FilepondController extends BaseController
         if (!is_numeric($offset) || !is_numeric($length))
             return http_response_code(400);
 
-        // Retrieve disk
-        $disk = config('filepond.temporary_files_disk', 'local');
-
         // Store chunk
         Storage::disk($disk)
-            ->path($path)
-            ->put('.patch.' . $offset, fopen('php://input', 'rb'));
+            ->put($pathRelative . '.patch.' . $offset, file_get_contents('php://input'));
 
-        // Check total size of chunks
+        // Check total chunks size
         $size = 0;
-        $chunks = Storage::files($path);
+        $chunks = Storage::disk($disk)
+            ->files(dirname($pathRelative));
         foreach ($chunks as $chunk)
-            $size += $chunk->getSize();
+            $size += Storage::disk($disk)
+                ->size($chunk);
 
-        // Check if upload finished
+        // Process finished upload
         if ($size == $length)
         {
-            // create output file
-            $file_handle = fopen($dir, 'wb');
+            // Sort chunks
+            $chunks = collect($chunks);
+            $chunks = $chunks->keyBy(function ($chunk) {
+                return substr($chunk, strrpos($chunk, '.')+1);
+            });
+            $chunks = $chunks->sortKeys();
 
-            // write patches to file
-            foreach ($patch as $filename) {
-                // get offset from filename
-                list($dir, $offset) = explode('.patch.', $filename, 2);
-                // read patch and close
-                $patch_handle = fopen($filename, 'rb');
-                $patch_contents = fread($patch_handle, filesize($filename));
-                fclose($patch_handle);
+            // Create file
+            $handle = fopen($path, 'wb');
 
-                // apply patch
-                fseek($file_handle, $offset);
-                fwrite($file_handle, $patch_contents);
+            $contents = '';
+            // Iterate chunks
+            foreach ($chunks as $chunk)
+            {
+                // Get chunk contents
+                $contents .= Storage::disk($disk)
+                    ->get($chunk);
+
+                fwrite($handle, $contents);
+
+                // Remove chunk
+                Storage::disk($disk)
+                    ->delete($chunk);
             }
-            // remove patches
-            foreach ($patch as $filename) {
-                unlink($filename);
-            }
-            // done with file
-            fclose($file_handle);
+
+            // Close file
+            fclose($handle);
+
+            // Append chunks
+            Storage::disk($disk)
+                ->put($pathRelative, $contents);
         }
-        return Response::make('',204);
+
+        return Response::make('', 204);
     }
 
     /**
@@ -146,3 +154,4 @@ class FilepondController extends BaseController
         ]);
     }
 }
+
