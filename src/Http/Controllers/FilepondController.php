@@ -92,7 +92,7 @@ class FilepondController extends BaseController
 
         // calculate total size of patches
         $size = 0;
-        $patch = glob($dir . '.patch.*');
+        $patch = glob($path . '.patch.*');
         foreach ($patch as $filename) {
             $size += filesize($filename);
         }
