@@ -39,10 +39,10 @@ class FilepondController extends BaseController
 
         if ($input === null) {
             // Chunk upload
-            $newFile = Storage::disk($disk)
-                ->put($path . DIRECTORY_SEPARATOR . Str::random(), '');
+            $newDir = Storage::disk($disk)
+                ->makeDirectory($path . DIRECTORY_SEPARATOR . Str::random());
 
-            return Response::make($this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newFile)), 200, [
+            return Response::make($this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newDir)), 200, [
                 'Content-Type' => 'text/plain',
             ]);
         }
@@ -56,6 +56,66 @@ class FilepondController extends BaseController
         return Response::make($this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newFile)), 200, [
             'Content-Type' => 'text/plain',
         ]);
+    }
+
+    /**
+     * Save chunk Parts.
+     * @param Request $request
+     * @return \Illuminate\Http\Response|int
+     */
+    public function chunk(Request $request)
+    {
+        error_reporting(E_ERROR);
+
+        // Retrieve upload ID
+        $id = $request->get('patch');
+
+        // Load chunks directory
+        $filePath = $this->filepond->getPathFromServerId($id);
+        $dir = $filePath;
+
+        // get patch data
+        $offset = $_SERVER['HTTP_UPLOAD_OFFSET'];
+        $length = $_SERVER['HTTP_UPLOAD_LENGTH'];
+        // should be numeric values, else exit
+        if (!is_numeric($offset) || !is_numeric($length)) {
+            return http_response_code(400);
+        }
+        // get sanitized name
+
+        // write patch file for this request
+        file_put_contents($dir . '.patch.' . $offset, fopen('php://input', 'rb'));
+        // calculate total size of patches
+        $size = 0;
+        $patch = glob($dir . '.patch.*');
+        foreach ($patch as $filename) {
+            $size += filesize($filename);
+        }
+        // if total size equals length of file we have gathered all patch files
+        if ($size == $length) {
+            // create output file
+            $file_handle = fopen($dir, 'wb');
+            // write patches to file
+            foreach ($patch as $filename) {
+                // get offset from filename
+                list($dir, $offset) = explode('.patch.', $filename, 2);
+                // read patch and close
+                $patch_handle = fopen($filename, 'rb');
+                $patch_contents = fread($patch_handle, filesize($filename));
+                fclose($patch_handle);
+
+                // apply patch
+                fseek($file_handle, $offset);
+                fwrite($file_handle, $patch_contents);
+            }
+            // remove patches
+            foreach ($patch as $filename) {
+                unlink($filename);
+            }
+            // done with file
+            fclose($file_handle);
+        }
+        return Response::make('',204);
     }
 
     /**
