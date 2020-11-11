@@ -64,15 +64,20 @@ class FilepondController extends BaseController
      */
     public function delete(Request $request)
     {
-        $filePath = $this->filepond->getPathFromServerId($request->getContent());
-        if (Storage::disk(config('filepond.temporary_files_disk', 'local'))->delete($filePath)) {
+        try {
+            $filePath = $this->filepond->getPathFromServerId($request->getContent());
+            $path = pathinfo($filePath, PATHINFO_DIRNAME);
+            File::delete($filePath);
+            if (count(glob($path . '*')) === 0) {
+                rmdir($path);
+            }
             return Response::make('', 200, [
                 'Content-Type' => 'text/plain',
             ]);
+        } catch (Throwable $e) {
+            return Response::make($e->getMessage(), 500, [
+                'Content-Type' => 'text/plain',
+            ]);
         }
-
-        return Response::make('', 500, [
-            'Content-Type' => 'text/plain',
-        ]);
     }
 }
