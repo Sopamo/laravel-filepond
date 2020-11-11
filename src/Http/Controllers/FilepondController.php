@@ -68,7 +68,7 @@ class FilepondController extends BaseController
             $filePath = $this->filepond->getPathFromServerId($request->getContent());
             $path = pathinfo($filePath, PATHINFO_DIRNAME);
             File::delete($filePath);
-            if (count(glob($path . '*')) === 0) {
+            if (count(glob($path . '/*')) === 0) {
                 rmdir($path);
             }
             return Response::make('', 200, [
