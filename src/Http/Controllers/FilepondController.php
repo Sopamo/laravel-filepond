@@ -31,7 +31,7 @@ class FilepondController extends BaseController
      */
     public function upload(Request $request)
     {
-        $input = $request->file(config('filepond.input_name'));
+        $input = $request->file($request->filename);
 
         if ($input === null) {
             return Response::make(config('filepond.input_name') . ' is required', 422, [
