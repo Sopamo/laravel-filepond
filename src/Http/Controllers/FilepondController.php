@@ -77,4 +77,10 @@ class FilepondController extends BaseController
             'Content-Type' => 'text/plain',
         ]);
     }
+    
+    public function load(Request $request)
+    {
+        $filePath = $this->filepond->getPathFromServerId($request->source_id);
+        return \response()->file($filePath);
+    }
 }
