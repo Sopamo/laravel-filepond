@@ -31,7 +31,7 @@ Included in this repo is a Filepond upload controller which is where you should 
 
 ```php
 // Get the temporary path using the serverId returned by the upload function in `FilepondController.php`
-$filepond = app(Sopamo\LaravelFilepond\Filepond::class);
+$filepond = app(\Sopamo\LaravelFilepond\Filepond::class);
 $path = $filepond->getPathFromServerId($serverId);
 
 // Move the file from the temporary path to the final location
