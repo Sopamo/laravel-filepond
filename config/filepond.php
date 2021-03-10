@@ -33,5 +33,17 @@ return [
     'temporary_files_path' => env('FILEPOND_TEMP_PATH', 'filepond'),
     'temporary_files_disk' => env('FILEPOND_TEMP_DISK', 'local'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Chunks path
+    |--------------------------------------------------------------------------
+    |
+    | When using chunks, we want to place them inside of this folder.
+    | Make sure it is writeable.
+    | Chunks use the same disk as the temporary files do.
+    |
+    */
+    'chunks_path' => env('FILEPOND_CHUNKS_PATH', 'filepond' . DIRECTORY_SEPARATOR . 'chunks'),
+
     'input_name' => 'file',
 ];
