@@ -122,10 +122,10 @@ class FilepondController extends BaseController
 
         // Store chunk
         Storage::disk($disk)
-            ->put($basePath . DIRECTORY_SEPARATOR . 'patch.' . $offset, $request->getContent());
+            ->put($basePath . DIRECTORY_SEPARATOR . 'patch.' . $offset, $request->getContent(), ['mimetype' => 'application/octet-stream']);
 
         $this->persistFileIfDone($disk, $basePath, $length, $finalFilePath);
-
+        
         return Response::make('', 204);
     }
 
@@ -163,21 +163,20 @@ class FilepondController extends BaseController
         $chunks = $chunks->sortKeys();
 
         // Append each chunk to the final file
+        $data = '';
         foreach ($chunks as $chunk) {
             // Get chunk contents
             $chunkContents = Storage::disk($disk)
                 ->get($chunk);
 
             // Laravel's local disk implementation is quite inefficient for appending data to existing files
-            // We might want to create a workaround for local disks which is more efficient
-            Storage::disk($disk)->append($finalFilePath, $chunkContents, '');
-
-            // Remove chunk
-            Storage::disk($disk)
-                ->delete($chunk);
+            // To be at least a bit more efficient, we build the final content ourselves, but the most efficient
+            // Way to do this would be to append using the driver's capabilities
+            $data .= $chunkContents;
+            unset($chunkContents);
         }
-        Storage::disk($disk)
-            ->deleteDir($basePath);
+        Storage::disk($disk)->put($finalFilePath, $data, ['mimetype' => 'application/octet-stream']);
+        Storage::disk($disk)->deleteDir($basePath);
     }
 
     /**
