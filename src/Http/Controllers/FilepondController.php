@@ -39,7 +39,10 @@ class FilepondController extends BaseController
             ]);
         }
 
-        $file = is_array($input) ? $input[0] : $input;
+        $file = $input;
+        while (is_array($file)) {
+            $file = isset($file[0]) ? $file[0] : null;
+        }
         $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
 
