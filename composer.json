@@ -1,5 +1,5 @@
 {
-  "name": "sopamo/laravel-filepond",
+  "name": "nocs/laravel-filepond",
   "description": "Laravel backend module for filepond uploads",
   "license": "MIT",
   "keywords": [
@@ -24,13 +24,13 @@
   },
   "autoload": {
     "psr-4": {
-      "Sopamo\\LaravelFilepond\\": "src/"
+      "Nocs\\LaravelFilepond\\": "src/"
     }
   },
   "extra": {
     "laravel": {
       "providers": [
-        "Sopamo\\LaravelFilepond\\LaravelFilepondServiceProvider"
+        "Nocs\\LaravelFilepond\\LaravelFilepondServiceProvider"
       ]
     }
   },

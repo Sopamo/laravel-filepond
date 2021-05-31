@@ -1,6 +1,6 @@
 <?php
 
-namespace Sopamo\LaravelFilepond\Exceptions;
+namespace Nocs\LaravelFilepond\Exceptions;
 
 use Throwable;
 

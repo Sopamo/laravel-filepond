@@ -1,6 +1,6 @@
 <?php
 
-namespace Sopamo\LaravelFilepond;
+namespace Nocs\LaravelFilepond;
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
