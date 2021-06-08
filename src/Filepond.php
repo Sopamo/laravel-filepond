@@ -1,11 +1,11 @@
 <?php
 
-namespace Sopamo\LaravelFilepond;
+namespace Nocs\LaravelFilepond;
 
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Sopamo\LaravelFilepond\Exceptions\InvalidPathException;
+use Nocs\LaravelFilepond\Exceptions\InvalidPathException;
 
 class Filepond
 {

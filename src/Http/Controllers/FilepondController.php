@@ -1,13 +1,13 @@
 <?php
 
-namespace Sopamo\LaravelFilepond\Http\Controllers;
+namespace Nocs\LaravelFilepond\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Sopamo\LaravelFilepond\Filepond;
+use Nocs\LaravelFilepond\Filepond;
 
 class FilepondController extends BaseController
 {
@@ -39,7 +39,10 @@ class FilepondController extends BaseController
             ]);
         }
 
-        $file = is_array($input) ? $input[0] : $input;
+        $file = $input;
+        while (is_array($file)) {
+            $file = isset($file[0]) ? $file[0] : null;
+        }
         $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
 

@@ -18,20 +18,20 @@
 Require this package in the `composer.json` of your Laravel project.
 
 ```bash
-composer require sopamo/laravel-filepond
+composer require nocs/laravel-filepond
 ```
 
 If you need to edit the configuration, you can publish it with:
 
 ```bash
-php artisan vendor:publish --provider="Sopamo\LaravelFilepond\LaravelFilepondServiceProvider"
+php artisan vendor:publish --provider="Nocs\LaravelFilepond\LaravelFilepondServiceProvider"
 ```
 
 Included in this repo is a Filepond upload controller which is where you should direct uploads to. Upon upload the controller will return the `$serverId` which Filepond will send via a hidden input field (same name as the img) to be used in your own controller to move the file from temporary storage to somewhere permanent using the `getPathFromServerId($request->input('image'))` function.
 
 ```php
 // Get the temporary path using the serverId returned by the upload function in `FilepondController.php`
-$filepond = app(\Sopamo\LaravelFilepond\Filepond::class);
+$filepond = app(\Nocs\LaravelFilepond\Filepond::class);
 $path = $filepond->getPathFromServerId($serverId);
 
 // Move the file from the temporary path to the final location
