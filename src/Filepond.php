@@ -274,4 +274,24 @@ class Filepond
         return $files;
     }
 
+    public function processFromPost($posted, $current, $path = 'uploads'): array
+    {
+
+        if (is_string($posted)) {
+            try {
+                $posted = json_decode($posted, true);
+            } catch (\Exception $e) {
+                $posted = [];
+            }
+        } elseif (is_object($posted)) {
+            $posted = json_decode(json_encode($posted), true);
+        }
+        $current = $current ?? [];
+
+        $posted = $this->unmask($posted, $current);
+        $posted = $this->process($posted, ['path' => $path]);
+
+        return $posted;
+    }
+
 }
