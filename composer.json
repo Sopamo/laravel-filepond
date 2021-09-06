@@ -2,6 +2,7 @@
   "name": "nocs/laravel-filepond",
   "description": "Laravel backend module for filepond uploads",
   "license": "MIT",
+  "homepage": "https://github.com/nineoclocksomewhere/laravel-filepond",
   "keywords": [
     "laravel",
     "php",
@@ -25,7 +26,10 @@
   "autoload": {
     "psr-4": {
       "Nocs\\LaravelFilepond\\": "src/"
-    }
+    },
+    "files": [
+      "helpers/helpers.php"
+    ]
   },
   "extra": {
     "laravel": {

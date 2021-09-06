@@ -4,6 +4,7 @@ namespace Nocs\LaravelFilepond;
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Nocs\Filepond\Support\Filepond as FilepondServer;
 
 class LaravelFilepondServiceProvider extends ServiceProvider
 {

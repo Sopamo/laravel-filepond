@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Nocs\LaravelFilepond\Filepond;
 
+use Illuminate\Support\Facades\Log;
+
 class FilepondController extends BaseController
 {
     /**
@@ -33,6 +35,8 @@ class FilepondController extends BaseController
     {
         $input = $request->file(config('filepond.input_name'));
 
+        $fieldName = $request->input("fieldName");
+
         if ($input === null) {
             return Response::make(config('filepond.input_name') . ' is required', 422, [
                 'Content-Type' => 'text/plain',
@@ -52,7 +56,12 @@ class FilepondController extends BaseController
             ]);
         }
 
-        return Response::make($this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newFile)), 200, [
+        $response = [
+            'serverId' => $this->filepond->getServerIdFromPath(Storage::disk($disk)->path($newFile)),
+            'fieldName' => $fieldName,
+        ];
+
+        return Response::make(json_encode($response), 200, [
             'Content-Type' => 'text/plain',
         ]);
     }
