@@ -156,7 +156,9 @@ class Filepond
     public function getFileDataFromStoredByToken(array $stored, string $token)
     {
         foreach ($stored as $fileData) {
-            if (($fileData['token'] ?? null) == $token) {
+            if (is_array($fileData) && (($fileData['token'] ?? null) == $token)) {
+                return json_decode(json_encode($fileData));
+            } elseif (is_object($fileData) && (($fileData->token ?? null) == $token)) {
                 return $fileData;
             }
         }
