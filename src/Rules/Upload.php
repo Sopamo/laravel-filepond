@@ -35,19 +35,6 @@ class Upload implements Rule
             'limitToMimetypes'   => [],
         ], $rules ?? []);
         
-        if (!empty($rules['limitToMimetypes']) && count($rules['limitToMimetypes'])) {
-            // add docx, xlsx or pptx if doc, xls or ppt is selected
-            foreach([
-                    'application/msword' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    'application/vnd.ms-powerpoint' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                    'application/vnd.ms-excel' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                ] as $type => $alias) {
-                if (in_array($type, $rules['limitToMimetypes'])) {
-                    $rules['limitToMimetypes'][] = $alias;
-                }
-            }
-        }
-
         $this->min = $rules['min'];
 
         $this->max = $rules['max'];
