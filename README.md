@@ -53,6 +53,10 @@ npm install filepond-plugin-image-preview
 npm install filepond-plugin-file-validate-type
 ```
 
+```bash
+npm i filepond-plugin-file-validate-size
+```
+
 #### External storage
 
 You can use any [Laravel disk](https://laravel.com/docs/7.x/filesystem) as the storage for temporary files. If you use a different disk for temporary files and final location, you will need to copy the file from the temporary location to the new disk then delete the temporary file yourself.
