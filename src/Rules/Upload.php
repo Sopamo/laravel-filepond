@@ -133,10 +133,10 @@ class Upload implements Rule
                 return trans('validation.upload-max');
 
             case 'limitFileSize':
-                return trans('validation.upload-limit-file-size', ['sizeLimit' => round($this->limitFileSize / 1024 / 1024, 1) .'Mb']);
+                return trans('validation.upload-limit-file-size', ['sizelimit' => round($this->limitFileSize / 1024 / 1024, 1) .'Mb']);
 
             case 'limitToMimetypes':
-                return trans('validation.upload-limit-mimetypes', ['forbiddenMimetype' => $this->forbiddenMimetype]);
+                return trans('validation.upload-limit-mimetypes', ['forbiddenmimetype' => $this->forbiddenMimetype]);
 
             default:
                 return trans('validation.upload');
