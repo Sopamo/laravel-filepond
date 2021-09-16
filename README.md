@@ -54,7 +54,7 @@ npm install filepond-plugin-file-validate-type
 ```
 
 ```bash
-npm i filepond-plugin-file-validate-size
+npm install filepond-plugin-file-validate-size
 ```
 
 #### External storage
