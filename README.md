@@ -73,6 +73,7 @@ FilePond.setOptions({
     url: '/filepond/api',
     process: '/process',
     revert: '/process',
+    patch: "?patch=",
     headers: {
       'X-CSRF-TOKEN': '{{ csrf_token() }}'
     }
