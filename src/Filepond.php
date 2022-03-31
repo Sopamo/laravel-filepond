@@ -35,21 +35,10 @@ class Filepond
         }
 
         $filePath = Crypt::decryptString($serverId);
-        if (! Str::startsWith($filePath, $this->getBasePath())) {
+        if (! Str::startsWith($filePath, config('filepond.temporary_files_path', 'filepond'))) {
             throw new InvalidPathException();
         }
 
         return $filePath;
-    }
-
-    /**
-     * Get the storage base path for files.
-     *
-     * @return string
-     */
-    public function getBasePath()
-    {
-        return Storage::disk(config('filepond.temporary_files_disk', 'local'))
-            ->path(config('filepond.temporary_files_path', 'filepond'));
     }
 }
