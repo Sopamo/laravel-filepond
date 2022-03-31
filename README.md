@@ -19,7 +19,7 @@
 Require this package in the `composer.json` of your Laravel project.
 
 ```bash
-composer require sopamo/laravel-filepond:dev-beta/v1.0
+composer require sopamo/laravel-filepond
 ```
 
 If you need to edit the configuration, you can publish it with:
@@ -45,7 +45,7 @@ $finalLocation = public_path('output.jpg');
 
 #### External storage
 
-You can use any [Laravel disk](https://laravel.com/docs/7.x/filesystem) as the storage for temporary files. If you use a different disk for temporary files and final location, you will need to copy the file from the temporary location to the new disk then delete the temporary file yourself.
+You can use any [Laravel disk](https://laravel.com/docs/7.x/filesystem) as the storage for temporary files. If you use a different disk for the temporary files and the final location, you will need to copy the file from the temporary location to the new disk then delete the temporary file yourself.
 
 If you are using the default `local` disk, make sure the /storage/app/filepond directory exists in your project and is writable.
 
