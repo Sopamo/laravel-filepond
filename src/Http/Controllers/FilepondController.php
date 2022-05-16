@@ -176,7 +176,7 @@ class FilepondController extends BaseController
             unset($chunkContents);
         }
         Storage::disk($disk)->put($finalFilePath, $data, ['mimetype' => 'application/octet-stream']);
-        Storage::disk($disk)->deleteDir($basePath);
+        Storage::disk($disk)->deleteDirectory($basePath);
     }
 
     /**
