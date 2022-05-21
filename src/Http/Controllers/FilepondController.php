@@ -190,7 +190,8 @@ class FilepondController extends BaseController
     public function delete(Request $request)
     {
         $filePath = $this->filepond->getPathFromServerId($request->getContent());
-        if (Storage::disk(config('filepond.temporary_files_disk', 'local'))->delete($filePath)) {
+        $folderPath = dirname($filePath);
+        if (Storage::disk(config('filepond.temporary_files_disk', 'local'))->deleteDirectory($folderPath)) {
             return Response::make('', 200, [
                 'Content-Type' => 'text/plain',
             ]);
