@@ -66,3 +66,10 @@ FilePond.setOptions({
   }
 });
 ```
+
+## Package development
+Please make sure all tests run successfully before submitting a PR.
+### Testing
+ - Start a docker container to execute the tests in with ` docker run -it -v $PWD:/app composer /bin/bash`
+ - Run `composer install`
+ - Run `./vendor/bin/phpunit`

@@ -24,7 +24,8 @@
   },
   "autoload": {
     "psr-4": {
-      "Sopamo\\LaravelFilepond\\": "src/"
+      "Sopamo\\LaravelFilepond\\": "src/",
+      "Sopamo\\LaravelFilepond\\Tests\\": "tests/"
     }
   },
   "extra": {
@@ -34,6 +35,15 @@
       ]
     }
   },
+  "scripts": {
+    "post-autoload-dump": [
+      "@php ./vendor/bin/testbench package:discover --ansi"
+    ]
+  },
   "minimum-stability": "dev",
-  "prefer-stable": true
+  "prefer-stable": true,
+  "require-dev": {
+    "phpunit/phpunit": "^9.5",
+    "orchestra/testbench": "^7.5"
+  }
 }

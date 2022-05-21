@@ -140,13 +140,14 @@ class FilepondController extends BaseController
      */
     private function persistFileIfDone($disk, $basePath, $length, $finalFilePath)
     {
+        $storage = Storage::disk($disk);
         // Check total chunks size
         $size = 0;
-        $chunks = Storage::disk($disk)
+        $chunks = $storage
             ->files($basePath);
 
         foreach ($chunks as $chunk) {
-            $size += Storage::disk($disk)
+            $size += $storage
                 ->size($chunk);
         }
 
@@ -166,7 +167,7 @@ class FilepondController extends BaseController
         $data = '';
         foreach ($chunks as $chunk) {
             // Get chunk contents
-            $chunkContents = Storage::disk($disk)
+            $chunkContents = $storage
                 ->get($chunk);
 
             // Laravel's local disk implementation is quite inefficient for appending data to existing files
