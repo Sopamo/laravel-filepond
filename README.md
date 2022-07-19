@@ -16,7 +16,7 @@
 >
 >[Check out double](https://github.com/Sopamo/double-vue)
 
-</p>
+</div>
 <br /><br />
 
 ## :rocket: Be up and running in 2 minutes
