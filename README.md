@@ -7,10 +7,17 @@
 <p align="center">
   <strong>An all in one Laravel backend for <a href="https://pqina.nl/filepond/" target="_blank">FilePond</a></strong><br>
 </p>
+<br /><br />
+<div align="center">
 
-<p>
-    We currently support the `process` and `revert` methods and are securing those via the Laravel encryption/decryption methods.
+>**Note**
+>
+>If you are using Laravel with Vue.js, check out another package from us which just went to alpha:
+>
+>[Check out double](https://github.com/Sopamo/double-vue)
+
 </p>
+<br /><br />
 
 ## :rocket: Be up and running in 2 minutes
 
