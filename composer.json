@@ -1,49 +1,49 @@
 {
-  "name": "sopamo/laravel-filepond",
-  "description": "Laravel backend module for filepond uploads",
-  "license": "MIT",
-  "keywords": [
-    "laravel",
-    "php",
-    "filepond",
-    "upload",
-    "image"
-  ],
-  "authors": [
-    {
-      "name": "Paul Mohr",
-      "email": "p.mohr@sopamo.de"
+    "name": "sopamo/laravel-filepond",
+    "description": "Laravel backend module for filepond uploads",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "php",
+        "filepond",
+        "upload",
+        "image"
+    ],
+    "authors": [
+        {
+            "name": "Paul Mohr",
+            "email": "p.mohr@sopamo.de"
+        }
+    ],
+    "require": {
+        "php": "^7.0|^8.0",
+        "illuminate/contracts": "5.5.*|5.6.*|5.7.*|5.8.*|^6.0|^7.0|^8.0|^9.0|^10.0",
+        "illuminate/http": "5.5.*|5.6.*|5.7.*|5.8.*|^6.0|^7.0|^8.0|^9.0|^10.0",
+        "illuminate/routing": "5.5.*|5.6.*|5.7.*|5.8.*|^6.0|^7.0|^8.0|^9.0|^10.0",
+        "illuminate/support": "5.5.*|5.6.*|5.7.*|5.8.*|^6.0|^7.0|^8.0|^9.0|^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Sopamo\\LaravelFilepond\\": "src/",
+            "Sopamo\\LaravelFilepond\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Sopamo\\LaravelFilepond\\LaravelFilepondServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": [
+            "@php ./vendor/bin/testbench package:discover --ansi"
+        ]
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "require-dev": {
+        "phpunit/phpunit": "^9.5",
+        "orchestra/testbench": "^7.5|^8.0"
     }
-  ],
-  "require": {
-    "php": "^7.0|^8.0",
-    "illuminate/contracts": "5.5.*|5.6.*|5.7.*|5.8.*|^6.0|^7.0|^8.0|^9.0",
-    "illuminate/http": "5.5.*|5.6.*|5.7.*|5.8.*|^6.0|^7.0|^8.0|^9.0",
-    "illuminate/routing": "5.5.*|5.6.*|5.7.*|5.8.*|^6.0|^7.0|^8.0|^9.0",
-    "illuminate/support": "5.5.*|5.6.*|5.7.*|5.8.*|^6.0|^7.0|^8.0|^9.0"
-  },
-  "autoload": {
-    "psr-4": {
-      "Sopamo\\LaravelFilepond\\": "src/",
-      "Sopamo\\LaravelFilepond\\Tests\\": "tests/"
-    }
-  },
-  "extra": {
-    "laravel": {
-      "providers": [
-        "Sopamo\\LaravelFilepond\\LaravelFilepondServiceProvider"
-      ]
-    }
-  },
-  "scripts": {
-    "post-autoload-dump": [
-      "@php ./vendor/bin/testbench package:discover --ansi"
-    ]
-  },
-  "minimum-stability": "dev",
-  "prefer-stable": true,
-  "require-dev": {
-    "phpunit/phpunit": "^9.5",
-    "orchestra/testbench": "^7.5"
-  }
 }
