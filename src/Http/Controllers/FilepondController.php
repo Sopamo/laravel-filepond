@@ -34,7 +34,8 @@ class FilepondController extends BaseController
      */
     public function upload(Request $request)
     {
-        $input = $request->file(config('filepond.input_name'));
+        $inputName = $request->post('input_name') ?? config('filepond.input_name');
+        $input = $request->file($inputName);
 
         if ($input === null) {
             return $this->handleChunkInitialization();
