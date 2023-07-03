@@ -238,7 +238,7 @@ class FilepondController extends BaseController
      */
     private function doGarbageCollector()
     {
-        $limit = config('filepond.gc_max_file_minutes_age');
+        $limit = config('filepond.gc_max_file_minutes_age', 60);
         if (!is_int($limit) || $limit < 0) {
             return;
         }
