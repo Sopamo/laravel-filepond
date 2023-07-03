@@ -6,6 +6,7 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
@@ -28,12 +29,17 @@ class FilepondController extends BaseController
      * Uploads the file to the temporary directory
      * and returns an encrypted path to the file
      *
-     * @param Request $request
+     * @param  Request  $request
      *
      * @return \Illuminate\Http\Response
      */
     public function upload(Request $request)
     {
+        $gcProbability = config('filepond.gc_probability', 10);
+        if (is_int($gcProbability) && random_int(1, 100) <= $gcProbability) {
+            $this->doGarbageCollector();
+        }
+
         $input = $request->file(config('filepond.input_name'));
 
         if ($input === null) {
@@ -44,7 +50,8 @@ class FilepondController extends BaseController
         $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
 
-        if (!($newFile = $file->storeAs($path . DIRECTORY_SEPARATOR . Str::random(), $file->getClientOriginalName(), $disk))) {
+        if (!($newFile = $file->storeAs($path.DIRECTORY_SEPARATOR.Str::random(), $file->getClientOriginalName(),
+            $disk))) {
             return Response::make('Could not save file', 500, [
                 'Content-Type' => 'text/plain',
             ]);
@@ -59,7 +66,7 @@ class FilepondController extends BaseController
      * This handles the case where filepond wants to start uploading chunks of a file
      * See: https://pqina.nl/filepond/docs/patterns/api/server/
      *
-     * @param Request $request
+     * @param  Request  $request
      * @return \Illuminate\Http\Response
      */
     private function handleChunkInitialization()
@@ -68,7 +75,7 @@ class FilepondController extends BaseController
         $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
 
-        $fileLocation = $path . DIRECTORY_SEPARATOR . $randomId;
+        $fileLocation = $path.DIRECTORY_SEPARATOR.$randomId;
 
         $fileCreated = Storage::disk($disk)
             ->put($fileLocation, '');
@@ -86,7 +93,7 @@ class FilepondController extends BaseController
     /**
      * Handle a single chunk
      *
-     * @param Request $request
+     * @param  Request  $request
      * @return \Illuminate\Http\Response
      * @throws FileNotFoundException
      */
@@ -109,7 +116,7 @@ class FilepondController extends BaseController
         $disk = config('filepond.temporary_files_disk', 'local');
 
         // Load chunks directory
-        $basePath = config('filepond.chunks_path') . DIRECTORY_SEPARATOR . $id;
+        $basePath = config('filepond.chunks_path').DIRECTORY_SEPARATOR.$id;
 
         // Get patch info
         $offset = $request->server('HTTP_UPLOAD_OFFSET');
@@ -122,10 +129,11 @@ class FilepondController extends BaseController
 
         // Store chunk
         Storage::disk($disk)
-            ->put($basePath . DIRECTORY_SEPARATOR . 'patch.' . $offset, $request->getContent(), ['mimetype' => 'application/octet-stream']);
+            ->put($basePath.DIRECTORY_SEPARATOR.'patch.'.$offset, $request->getContent(),
+                ['mimetype' => 'application/octet-stream']);
 
         $this->persistFileIfDone($disk, $basePath, $length, $finalFilePath);
-        
+
         return Response::make('', 204);
     }
 
@@ -184,23 +192,68 @@ class FilepondController extends BaseController
      * Takes the given encrypted filepath and deletes
      * it if it hasn't been tampered with
      *
-     * @param Request $request
+     * @param  Request  $request
      *
      * @return mixed
      */
     public function delete(Request $request)
     {
+        $temporaryFilesPath = config('filepond.temporary_files_path');
+        $disk = Storage::disk(config('filepond.temporary_files_disk', 'local'));
+
         $filePath = $this->filepond->getPathFromServerId($request->getContent());
         $folderPath = dirname($filePath);
-        if (Storage::disk(config('filepond.temporary_files_disk', 'local'))->deleteDirectory($folderPath)) {
-            return Response::make('', 200, [
-                'Content-Type' => 'text/plain',
-            ]);
+
+        if ($folderPath === $temporaryFilesPath) {
+            // delete chunked file
+            $uploadId = str_replace($temporaryFilesPath.\DIRECTORY_SEPARATOR, '', $filePath);
+            $chunkFolder = config('filepond.chunks_path').DIRECTORY_SEPARATOR.$uploadId;
+            if (
+                $disk->delete($filePath) &&
+                $disk->deleteDirectory($chunkFolder)
+            ) {
+                return Response::make('', 200, [
+                    'Content-Type' => 'text/plain',
+                ]);
+            }
+        } else {
+            // delete standard file
+            if ($disk->deleteDirectory($folderPath)) {
+                return Response::make('', 200, [
+                    'Content-Type' => 'text/plain',
+                ]);
+            }
         }
+
 
         return Response::make('', 500, [
             'Content-Type' => 'text/plain',
         ]);
+    }
+
+    /**
+     * Get files uploaded to the temporary folder that was never used and delete them
+     *
+     * @return void
+     */
+    private function doGarbageCollector()
+    {
+        $limit = config('filepond.gc_max_file_minutes_age');
+        if (!is_int($limit) || $limit < 0) {
+            return;
+        }
+        $limit = Carbon::now()->subMinutes($limit)->timestamp;
+        $disk = Storage::disk(config('filepond.temporary_files_disk', 'local'));
+        $path = config('filepond.temporary_files_path');
+        $chunkPath = config('filepond.chunks_path');
+        $directories = collect($disk->directories($path))
+            ->merge($disk->directories($chunkPath))
+            ->filter(fn($dir) => $dir != $chunkPath)
+            ->filter(fn($dir) => $disk->lastModified($dir) < $limit);
+
+        foreach ($directories as $directory) {
+            $disk->deleteDirectory($directory);
+        }
     }
 }
 
