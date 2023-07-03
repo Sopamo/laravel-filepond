@@ -46,4 +46,14 @@ return [
     'chunks_path' => env('FILEPOND_CHUNKS_PATH', 'filepond' . DIRECTORY_SEPARATOR . 'chunks'),
 
     'input_name' => 'file',
+
+    /**
+     * Garbage collection probability
+     */
+    'gc_probability' => env('FILEPOND_GC_PROBABILITY', 10),
+
+    /**
+     * Garbage collection max file age in minutes
+     */
+    'gc_max_file_minutes_age' => env('FILEPOND_GC_MAX_FILE_MINUTES_AGE', 60),
 ];
