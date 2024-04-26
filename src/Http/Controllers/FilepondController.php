@@ -37,7 +37,7 @@ class FilepondController extends BaseController
         $input = $request->file(config('filepond.input_name'));
 
         if ($input === null) {
-            return $this->handleChunkInitialization();
+            return $this->handleChunkInitialization($request);
         }
 
         $file = is_array($input) ? $input[0] : $input;
@@ -62,13 +62,13 @@ class FilepondController extends BaseController
      * @param Request $request
      * @return \Illuminate\Http\Response
      */
-    private function handleChunkInitialization()
+    private function handleChunkInitialization(Request $request)
     {
-        $randomId = Str::random();
         $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
 
-        $fileLocation = $path . DIRECTORY_SEPARATOR . $randomId;
+        $baseName = pathinfo($request->header('Upload-Name'), PATHINFO_BASENAME);
+        $fileLocation = $path . DIRECTORY_SEPARATOR . $baseName;
 
         $fileCreated = Storage::disk($disk)
             ->put($fileLocation, '');
@@ -125,7 +125,7 @@ class FilepondController extends BaseController
             ->put($basePath . DIRECTORY_SEPARATOR . 'patch.' . $offset, $request->getContent(), ['mimetype' => 'application/octet-stream']);
 
         $this->persistFileIfDone($disk, $basePath, $length, $finalFilePath);
-        
+
         return Response::make('', 204);
     }
 
@@ -173,10 +173,8 @@ class FilepondController extends BaseController
             // Laravel's local disk implementation is quite inefficient for appending data to existing files
             // To be at least a bit more efficient, we build the final content ourselves, but the most efficient
             // Way to do this would be to append using the driver's capabilities
-            $data .= $chunkContents;
-            unset($chunkContents);
+            Storage::disk($disk)->append($finalFilePath, $chunkContents);
         }
-        Storage::disk($disk)->put($finalFilePath, $data, ['mimetype' => 'application/octet-stream']);
         Storage::disk($disk)->deleteDirectory($basePath);
     }
 
