@@ -70,7 +70,8 @@ class FilepondController extends BaseController
 
         $baseName = $randomId;
         if ($request->header('Upload-Name')) {
-            $baseName = pathinfo($request->header('Upload-Name'), PATHINFO_BASENAME).'-'.$randomId;
+            $fileName = pathinfo($request->header('Upload-Name'), PATHINFO_FILENAME);
+            $baseName = $fileName.'-'.$randomId;
         }
         $fileLocation = $path . DIRECTORY_SEPARATOR . $baseName;
 
