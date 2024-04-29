@@ -64,10 +64,14 @@ class FilepondController extends BaseController
      */
     private function handleChunkInitialization(Request $request)
     {
+        $randomId = Str::random();
         $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
 
-        $baseName = pathinfo($request->header('Upload-Name'), PATHINFO_BASENAME);
+        $baseName = $randomId;
+        if ($request->header('Upload-Name')) {
+            $baseName = pathinfo($request->header('Upload-Name'), PATHINFO_BASENAME).'-'.$randomId;
+        }
         $fileLocation = $path . DIRECTORY_SEPARATOR . $baseName;
 
         $fileCreated = Storage::disk($disk)
@@ -169,12 +173,13 @@ class FilepondController extends BaseController
             // Get chunk contents
             $chunkContents = $storage
                 ->get($chunk);
-
             // Laravel's local disk implementation is quite inefficient for appending data to existing files
             // To be at least a bit more efficient, we build the final content ourselves, but the most efficient
             // Way to do this would be to append using the driver's capabilities
-            Storage::disk($disk)->append($finalFilePath, $chunkContents);
+            $data .= $chunkContents;
+            unset($chunkContents);
         }
+        Storage::disk($disk)->put($finalFilePath, $data);
         Storage::disk($disk)->deleteDirectory($basePath);
     }
 
