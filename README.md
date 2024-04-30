@@ -64,7 +64,16 @@ This is the minimum Filepond JS configuration you need to set after installing l
 FilePond.setOptions({
   server: {
     url: '/filepond/api',
-    process: '/process',
+    process: {
+      url: "/process",
+      headers: (file: File) => {
+        // Send the original file name which will be used for chunked uploads
+        return {
+          "Upload-Name": file.name,
+          "X-CSRF-TOKEN": "{{ csrf_token() }}",
+        }
+      },
+    },
     revert: '/process',
     patch: "?patch=",
     headers: {
