@@ -71,7 +71,8 @@ class FilepondController extends BaseController
         $baseName = $randomId;
         if ($request->header('Upload-Name')) {
             $fileName = pathinfo($request->header('Upload-Name'), PATHINFO_FILENAME);
-            $baseName = $fileName.'-'.$randomId;
+            $ext = pathinfo($request->header('Upload-Name'), PATHINFO_EXTENSION);
+            $baseName = $fileName.'-'.$randomId.'.'.$ext;
         }
         $fileLocation = $path . DIRECTORY_SEPARATOR . $baseName;
 
@@ -169,19 +170,24 @@ class FilepondController extends BaseController
         $chunks = $chunks->sortKeys();
 
         // Append each chunk to the final file
-        $data = '';
+        $tmpFile = tmpfile();
+        $tmpFileName = stream_get_meta_data($tmpFile)['uri'];
+        // Append each chunk to the final file
         foreach ($chunks as $chunk) {
             // Get chunk contents
-            $chunkContents = $storage
-                ->get($chunk);
-            // Laravel's local disk implementation is quite inefficient for appending data to existing files
-            // To be at least a bit more efficient, we build the final content ourselves, but the most efficient
-            // Way to do this would be to append using the driver's capabilities
-            $data .= $chunkContents;
-            unset($chunkContents);
+            $chunkContents = $storage->readStream($chunk['path']);
+
+            // Stream data from chunk to tmp file
+            stream_copy_to_stream($chunkContents, $tmpFile);
         }
-        Storage::disk($disk)->put($finalFilePath, $data);
-        Storage::disk($disk)->deleteDirectory($basePath);
+        // We can also pass ['mimetype' => $storage->mimeType($finalFilePath)] since the
+        // $finalFilePath now contains the extension of the file
+        $storage->put($finalFilePath, $tmpFile);
+        $storage->deleteDirectory($basePath);
+
+        if (file_exists($tmpFileName)) {
+            unlink($tmpFileName);
+        }
     }
 
     /**
