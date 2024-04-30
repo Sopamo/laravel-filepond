@@ -175,7 +175,7 @@ class FilepondController extends BaseController
         // Append each chunk to the final file
         foreach ($chunks as $chunk) {
             // Get chunk contents
-            $chunkContents = $storage->readStream($chunk['path']);
+            $chunkContents = $storage->readStream($chunk);
 
             // Stream data from chunk to tmp file
             stream_copy_to_stream($chunkContents, $tmpFile);
