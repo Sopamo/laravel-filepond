@@ -8,16 +8,6 @@
   <strong>An all in one Laravel backend for <a href="https://pqina.nl/filepond/" target="_blank">FilePond</a></strong><br>
 </p>
 <br /><br />
-<div align="center">
-
->**Note**
->
->If you are using Laravel with Vue.js, check out another package from us which just went to alpha:
->
->[Check out double](https://github.com/Sopamo/double-vue)
-
-</div>
-<br /><br />
 
 ## :rocket: Be up and running in 2 minutes
 
