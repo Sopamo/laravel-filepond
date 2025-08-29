@@ -42,3 +42,4 @@ class Filepond
         return $filePath;
     }
 }
+
