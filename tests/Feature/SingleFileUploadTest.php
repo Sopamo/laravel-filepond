@@ -33,4 +33,36 @@ class SingleFileUploadTest extends TestCase
 
         Storage::disk($diskName)->assertExists($pathFromServerId);
     }
+
+    /** @test */
+    public function test_delete_succeeds_for_a_normal_file_upload_without_a_chunk_directory()
+    {
+        $diskName = config('filepond.temporary_files_disk', 'local');
+
+        Storage::fake($diskName);
+
+        $uploadResponse = $this->postJson('/filepond/api/process', [
+            'file' => UploadedFile::fake()->create('test.txt', 1),
+        ]);
+
+        $uploadResponse->assertStatus(200);
+        $serverId = $uploadResponse->content();
+
+        /** @var Filepond $filepond */
+        $filepond = app(Filepond::class);
+        $pathFromServerId = $filepond->getPathFromServerId($serverId);
+
+        $deleteResponse = $this->call(
+            'DELETE',
+            '/filepond/api/process',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'text/plain'],
+            $serverId
+        );
+
+        $deleteResponse->assertStatus(200);
+        Storage::disk($diskName)->assertMissing($pathFromServerId);
+    }
 }

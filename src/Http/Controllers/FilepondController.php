@@ -11,30 +11,17 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Sopamo\LaravelFilepond\Exceptions\InvalidPathException;
 use Sopamo\LaravelFilepond\Filepond;
-use Sopamo\LaravelFilepond\Support\AzureOssChunkUploadManifest;
-use Sopamo\LaravelFilepond\Support\ChunkUploadAdapterResolver;
 
 class FilepondController extends BaseController
 {
-    /**
-     * Maximum size for Azure append block operations (4MB)
-     */
-    private const MAX_APPEND_BLOCK_SIZE = 4 * 1024 * 1024;
-
     /**
      * @var Filepond
      */
     private $filepond;
 
-    /**
-     * @var ChunkUploadAdapterResolver
-     */
-    private $chunkUploadAdapterResolver;
-
-    public function __construct(Filepond $filepond, ChunkUploadAdapterResolver $chunkUploadAdapterResolver)
+    public function __construct(Filepond $filepond)
     {
         $this->filepond = $filepond;
-        $this->chunkUploadAdapterResolver = $chunkUploadAdapterResolver;
     }
 
     /**
@@ -69,35 +56,6 @@ class FilepondController extends BaseController
     }
 
     /**
-     * Create an Azure append blob
-     *
-     * @param \MicrosoftAzure\Storage\Blob\BlobRestProxy $client
-     * @param string $container
-     * @param string $fileLocation
-     * @param Request $request
-     * @return bool
-     */
-    private function createAzureAppendBlob($client, string $container, string $fileLocation, Request $request): bool
-    {
-        try {
-            $options = new \MicrosoftAzure\Storage\Blob\Models\CreateBlobOptions();
-            $options->setContentType($request->header('Content-Type', 'application/octet-stream'));
-
-            $client->createAppendBlob(
-                $container,
-                $fileLocation,
-                $options
-            );
-
-            return true;
-        } catch (\Exception $exception) {
-            logger()->error('Error creating Azure append blob: '.$exception->getMessage());
-
-            return false;
-        }
-    }
-
-    /**
      * This handles the case where filepond wants to start uploading chunks of a file
      * See: https://pqina.nl/filepond/docs/patterns/api/server/
      *
@@ -109,36 +67,18 @@ class FilepondController extends BaseController
         $disk = config('filepond.temporary_files_disk', 'local');
         $storage = Storage::disk($disk);
         $fileLocation = $this->buildChunkInitializationFileLocation($request);
-        $resolvedStorageAdapter = $this->chunkUploadAdapterResolver->resolve($storage);
 
-        $fileCreated = false;
-
-        if ($resolvedStorageAdapter['type'] === ChunkUploadAdapterResolver::TYPE_LEGACY_AZURE) {
-            $client = $resolvedStorageAdapter['client'];
-            $container = $resolvedStorageAdapter['container'];
-
-            if ($client instanceof \MicrosoftAzure\Storage\Blob\BlobRestProxy && !empty($container)) {
-                $fileCreated = $this->createAzureAppendBlob($client, $container, $fileLocation, $request);
-            }
-        }
-
-        if (!$fileCreated) {
-            $fileCreated = $storage->put($fileLocation, '');
-        }
-
-        if (!$fileCreated) {
+        if (!$storage->put($fileLocation, '')) {
             abort(500, 'Could not create file');
         }
 
-        $filepondId = $this->filepond->getServerIdFromPath($fileLocation);
-
-        return Response::make($filepondId, 200, [
+        return Response::make($this->filepond->getServerIdFromPath($fileLocation), 200, [
             'Content-Type' => 'text/plain',
         ]);
     }
 
     /**
-     * Store a chunk using the multi-file approach (and not Azure's append blob)
+     * Store a chunk using the multi-file approach
      *
      * @param Request $request
      * @return \Illuminate\Http\Response
@@ -148,18 +88,7 @@ class FilepondController extends BaseController
     {
         $chunkUploadDetails = $this->getChunkUploadDetails($request);
 
-        $disk = config('filepond.temporary_files_disk', 'local');
-        $basePath = $this->getChunkStoragePath($chunkUploadDetails['final_file_path']);
-
-        Storage::disk($disk)->put(
-            $basePath.DIRECTORY_SEPARATOR.'patch.'.$chunkUploadDetails['offset'],
-            $request->getContent(),
-            ['mimetype' => 'application/octet-stream']
-        );
-
-        $this->persistFileIfDone($disk, $basePath, $chunkUploadDetails['length'], $chunkUploadDetails['final_file_path']);
-
-        return Response::make('', 204);
+        return $this->storeMultiFileChunk($request->getContent(), $chunkUploadDetails);
     }
 
     /**
@@ -219,21 +148,16 @@ class FilepondController extends BaseController
     public function chunk(Request $request)
     {
         $chunkUploadDetails = $this->getChunkUploadDetails($request);
-        $disk = config('filepond.temporary_files_disk', 'local');
-        $storage = Storage::disk($disk);
-        $resolvedStorageAdapter = $this->chunkUploadAdapterResolver->resolve($storage);
+        $storage = Storage::disk(config('filepond.temporary_files_disk', 'local'));
+        $azureOssStorageContext = $this->resolveAzureOssStorageContext($storage);
 
-        if ($resolvedStorageAdapter['type'] === ChunkUploadAdapterResolver::TYPE_AZURE_OSS) {
-            $this->storeAzureOssChunk($storage, $chunkUploadDetails, $request->getContent(), $resolvedStorageAdapter);
-
-            return Response::make('', 204);
+        if ($azureOssStorageContext === null) {
+            return $this->storeMultiFileChunk($request->getContent(), $chunkUploadDetails);
         }
 
-        if ($resolvedStorageAdapter['type'] === ChunkUploadAdapterResolver::TYPE_LEGACY_AZURE) {
-            return $this->appendLegacyAzureChunk($request, $chunkUploadDetails, $resolvedStorageAdapter);
-        }
+        $this->storeAzureOssChunk($storage, $chunkUploadDetails, $request->getContent(), $azureOssStorageContext);
 
-        return $this->multiFileChunk($request);
+        return Response::make('', 204);
     }
 
     /**
@@ -250,7 +174,7 @@ class FilepondController extends BaseController
         $storage = Storage::disk(config('filepond.temporary_files_disk', 'local'));
 
         $temporaryDirectoryDeleted = $storage->deleteDirectory(dirname($filePath));
-        $chunkDirectoryDeleted = $storage->deleteDirectory($this->getChunkStoragePath($filePath));
+        $chunkDirectoryDeleted = $this->deleteDirectoryIfItExists($storage, $this->getChunkStoragePath($filePath));
 
         if ($temporaryDirectoryDeleted && $chunkDirectoryDeleted) {
             return Response::make('', 200, [
@@ -264,6 +188,32 @@ class FilepondController extends BaseController
     }
 
     /**
+     * @param string $content
+     * @param array{
+     *     final_file_path: string,
+     *     offset: int,
+     *     length: int
+     * } $chunkUploadDetails
+     * @return \Illuminate\Http\Response
+     * @throws FileNotFoundException
+     */
+    private function storeMultiFileChunk(string $content, array $chunkUploadDetails)
+    {
+        $disk = config('filepond.temporary_files_disk', 'local');
+        $basePath = $this->getChunkStoragePath($chunkUploadDetails['final_file_path']);
+
+        Storage::disk($disk)->put(
+            $basePath.DIRECTORY_SEPARATOR.'patch.'.$chunkUploadDetails['offset'],
+            $content,
+            ['mimetype' => 'application/octet-stream']
+        );
+
+        $this->persistFileIfDone($disk, $basePath, $chunkUploadDetails['length'], $chunkUploadDetails['final_file_path']);
+
+        return Response::make('', 204);
+    }
+
+    /**
      * @param mixed $storage
      * @param array{
      *     final_file_path: string,
@@ -271,22 +221,15 @@ class FilepondController extends BaseController
      *     length: int
      * } $chunkUploadDetails
      * @param string $content
-     * @param array<string, mixed> $resolvedStorageAdapter
+     * @param array{
+     *     container_client: object,
+     *     path_prefixer: object
+     * } $azureOssStorageContext
      */
-    private function storeAzureOssChunk($storage, array $chunkUploadDetails, string $content, array $resolvedStorageAdapter): void
+    private function storeAzureOssChunk($storage, array $chunkUploadDetails, string $content, array $azureOssStorageContext): void
     {
-        $containerClient = $resolvedStorageAdapter['container_client'];
-        if (!is_object($containerClient) || !method_exists($containerClient, 'getBlockBlobClient')) {
-            throw new \RuntimeException('Could not resolve the AzureOss block blob client.');
-        }
-
-        $pathPrefixer = $resolvedStorageAdapter['path_prefixer'];
-        if (!is_object($pathPrefixer) || !method_exists($pathPrefixer, 'prefixPath')) {
-            throw new \RuntimeException('Could not resolve the AzureOss path prefixer.');
-        }
-
-        $blockBlobClient = $containerClient->getBlockBlobClient(
-            $pathPrefixer->prefixPath($chunkUploadDetails['final_file_path'])
+        $blockBlobClient = $azureOssStorageContext['container_client']->getBlockBlobClient(
+            $azureOssStorageContext['path_prefixer']->prefixPath($chunkUploadDetails['final_file_path'])
         );
 
         if (!is_object($blockBlobClient) || !method_exists($blockBlobClient, 'stageBlock') || !method_exists($blockBlobClient, 'commitBlockList')) {
@@ -296,75 +239,28 @@ class FilepondController extends BaseController
         $blockId = $this->buildAzureOssBlockId($chunkUploadDetails['offset']);
         $blockBlobClient->stageBlock($blockId, $content);
 
-        $manifest = new AzureOssChunkUploadManifest(
-            $storage,
-            $this->getAzureOssManifestPath($chunkUploadDetails['final_file_path'])
-        );
+        $manifestPath = $this->getAzureOssManifestPath($chunkUploadDetails['final_file_path']);
+        $manifest = $this->loadAzureOssManifest($storage, $manifestPath);
+        $manifest['upload_length'] = $chunkUploadDetails['length'];
+        $manifest['chunks'][(string) $chunkUploadDetails['offset']] = [
+            'offset' => $chunkUploadDetails['offset'],
+            'size' => strlen($content),
+            'block_id' => $blockId,
+        ];
 
-        $manifest->recordChunk(
-            $chunkUploadDetails['offset'],
-            strlen($content),
-            $blockId,
-            $chunkUploadDetails['length']
-        );
+        $manifestJson = json_encode($manifest);
+        if ($manifestJson === false) {
+            throw new \RuntimeException('Could not encode the AzureOss chunk upload manifest.');
+        }
 
-        if (!$manifest->hasReceivedAllBytes()) {
+        $storage->put($manifestPath, $manifestJson);
+
+        if ($this->uploadedAzureOssChunkBytes($manifest) < $manifest['upload_length']) {
             return;
         }
 
-        $blockBlobClient->commitBlockList($manifest->orderedBlockIds());
-        $manifest->delete();
-    }
-
-    /**
-     * @param Request $request
-     * @param array{
-     *     final_file_path: string,
-     *     offset: int,
-     *     length: int
-     * } $chunkUploadDetails
-     * @param array<string, mixed> $resolvedStorageAdapter
-     * @return \Illuminate\Http\Response
-     */
-    private function appendLegacyAzureChunk(Request $request, array $chunkUploadDetails, array $resolvedStorageAdapter)
-    {
-        $client = $resolvedStorageAdapter['client'];
-        $container = $resolvedStorageAdapter['container'];
-
-        if (!$client instanceof \MicrosoftAzure\Storage\Blob\BlobRestProxy || empty($container)) {
-            return $this->multiFileChunk($request);
-        }
-
-        try {
-            $content = $request->getContent();
-            $contentLength = strlen($content);
-            $appendBlockOptions = new \MicrosoftAzure\Storage\Blob\Models\AppendBlockOptions();
-
-            if ($contentLength > self::MAX_APPEND_BLOCK_SIZE) {
-                $position = 0;
-
-                while ($position < $contentLength) {
-                    $client->appendBlock(
-                        $container,
-                        $chunkUploadDetails['final_file_path'],
-                        substr($content, $position, self::MAX_APPEND_BLOCK_SIZE),
-                        $appendBlockOptions
-                    );
-                    $position += self::MAX_APPEND_BLOCK_SIZE;
-                }
-            } else {
-                $client->appendBlock(
-                    $container,
-                    $chunkUploadDetails['final_file_path'],
-                    $content,
-                    $appendBlockOptions
-                );
-            }
-
-            return Response::make('', 204);
-        } catch (\Exception $exception) {
-            return $this->multiFileChunk($request);
-        }
+        $blockBlobClient->commitBlockList($this->orderedAzureOssBlockIds($manifest));
+        $storage->deleteDirectory($this->getChunkStoragePath($chunkUploadDetails['final_file_path']));
     }
 
     /**
@@ -435,5 +331,195 @@ class FilepondController extends BaseController
     private function buildAzureOssBlockId(int $offset): string
     {
         return base64_encode(str_pad((string) $offset, 20, '0', STR_PAD_LEFT));
+    }
+
+    /**
+     * @param mixed $storage
+     * @return array{
+     *     container_client: object,
+     *     path_prefixer: object
+     * }|null
+     */
+    private function resolveAzureOssStorageContext($storage): ?array
+    {
+        $storageAdapter = $this->extractStorageAdapter($storage);
+        if (!is_object($storageAdapter)) {
+            return null;
+        }
+
+        $innerAdapter = $this->readObjectProperty($storageAdapter, 'innerAdapter');
+        if (is_object($innerAdapter)) {
+            $storageAdapter = $innerAdapter;
+        }
+
+        if (!$this->isAzureOssAdapter($storageAdapter)) {
+            return null;
+        }
+
+        $containerClient = $this->readObjectProperty($storageAdapter, 'containerClient');
+        if (!is_object($containerClient) || !method_exists($containerClient, 'getBlockBlobClient')) {
+            throw new \RuntimeException('Could not resolve the AzureOss block blob client.');
+        }
+
+        $pathPrefixer = $this->readObjectProperty($storageAdapter, 'prefixer');
+        if (!is_object($pathPrefixer) || !method_exists($pathPrefixer, 'prefixPath')) {
+            throw new \RuntimeException('Could not resolve the AzureOss path prefixer.');
+        }
+
+        return [
+            'container_client' => $containerClient,
+            'path_prefixer' => $pathPrefixer,
+        ];
+    }
+
+    /**
+     * @param mixed $storage
+     * @return mixed
+     */
+    private function extractStorageAdapter($storage)
+    {
+        if (!is_object($storage)) {
+            return null;
+        }
+
+        if (method_exists($storage, 'getAdapter')) {
+            $adapter = $storage->getAdapter();
+            if (is_object($adapter)) {
+                return $adapter;
+            }
+        }
+
+        if (!method_exists($storage, 'getDriver')) {
+            return null;
+        }
+
+        $driver = $storage->getDriver();
+        if (!is_object($driver) || !method_exists($driver, 'getAdapter')) {
+            return null;
+        }
+
+        $adapter = $driver->getAdapter();
+
+        return is_object($adapter) ? $adapter : null;
+    }
+
+    /**
+     * @param mixed $adapter
+     */
+    private function isAzureOssAdapter($adapter): bool
+    {
+        if (!is_object($adapter)) {
+            return false;
+        }
+
+        return is_a($adapter, 'AzureOss\\Storage\\BlobFlysystem\\AzureBlobStorageAdapter')
+            || is_a($adapter, 'AzureOss\\FlysystemAzureBlobStorage\\AzureBlobStorageAdapter');
+    }
+
+    /**
+     * @param mixed $storage
+     * @return array{
+     *     upload_length: int,
+     *     chunks: array<string, array{offset: int, size: int, block_id: string}>
+     * }
+     */
+    private function loadAzureOssManifest($storage, string $manifestPath): array
+    {
+        if (!$storage->exists($manifestPath)) {
+            return [
+                'upload_length' => 0,
+                'chunks' => [],
+            ];
+        }
+
+        $manifest = json_decode($storage->get($manifestPath), true);
+        if (!is_array($manifest) || !isset($manifest['upload_length']) || !isset($manifest['chunks']) || !is_array($manifest['chunks'])) {
+            throw new \RuntimeException('Invalid AzureOss chunk upload manifest.');
+        }
+
+        return $manifest;
+    }
+
+    /**
+     * @param array{
+     *     upload_length: int,
+     *     chunks: array<string, array{offset: int, size: int, block_id: string}>
+     * } $manifest
+     * @return string[]
+     */
+    private function orderedAzureOssBlockIds(array $manifest): array
+    {
+        $chunkEntries = array_values($manifest['chunks']);
+
+        usort($chunkEntries, function (array $leftChunk, array $rightChunk): int {
+            return $leftChunk['offset'] <=> $rightChunk['offset'];
+        });
+
+        return array_map(function (array $chunkEntry): string {
+            return $chunkEntry['block_id'];
+        }, $chunkEntries);
+    }
+
+    /**
+     * @param array{
+     *     upload_length: int,
+     *     chunks: array<string, array{offset: int, size: int, block_id: string}>
+     * } $manifest
+     */
+    private function uploadedAzureOssChunkBytes(array $manifest): int
+    {
+        $uploadedChunkBytes = 0;
+
+        foreach ($manifest['chunks'] as $chunkEntry) {
+            $uploadedChunkBytes += $chunkEntry['size'];
+        }
+
+        return $uploadedChunkBytes;
+    }
+
+    /**
+     * @param mixed $storage
+     */
+    private function deleteDirectoryIfItExists($storage, string $directoryPath): bool
+    {
+        if (method_exists($storage, 'directoryExists') && !$storage->directoryExists($directoryPath)) {
+            return true;
+        }
+
+        if (!method_exists($storage, 'directoryExists') && method_exists($storage, 'exists') && !$storage->exists($directoryPath)) {
+            return true;
+        }
+
+        return $storage->deleteDirectory($directoryPath);
+    }
+
+    /**
+     * @param mixed $object
+     * @return mixed
+     */
+    private function readObjectProperty($object, string $propertyName)
+    {
+        if (!is_object($object)) {
+            return null;
+        }
+
+        try {
+            $reflectionClass = new \ReflectionObject($object);
+
+            while ($reflectionClass !== false) {
+                if ($reflectionClass->hasProperty($propertyName)) {
+                    $property = $reflectionClass->getProperty($propertyName);
+                    $property->setAccessible(true);
+
+                    return $property->getValue($object);
+                }
+
+                $reflectionClass = $reflectionClass->getParentClass();
+            }
+        } catch (\ReflectionException $exception) {
+            return null;
+        }
+
+        return null;
     }
 }
