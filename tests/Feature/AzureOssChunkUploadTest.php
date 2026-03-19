@@ -37,6 +37,8 @@ namespace Sopamo\LaravelFilepond\Tests\Feature {
     use League\Flysystem\PathPrefixer;
     use Sopamo\LaravelFilepond\Filepond;
     use Sopamo\LaravelFilepond\Tests\TestCase;
+    use Sopamo\LaravelFilepond\Uploads\AzureBlockBlobClient;
+    use Sopamo\LaravelFilepond\Uploads\AzureBlockBlobContainerClient;
 
     class AzureOssChunkUploadTest extends TestCase
     {
@@ -78,6 +80,42 @@ namespace Sopamo\LaravelFilepond\Tests\Feature {
             $this->assertSame('hello world', Storage::disk($diskName)->get($finalFilePath));
             $this->assertFileDoesNotExist($prefixedStorageRoot.DIRECTORY_SEPARATOR.$chunkStoragePath.DIRECTORY_SEPARATOR.'patch.0');
             $this->assertFileDoesNotExist($prefixedStorageRoot.DIRECTORY_SEPARATOR.$chunkStoragePath.DIRECTORY_SEPARATOR.'manifest.json');
+        }
+
+        /** @test */
+        public function test_wrapped_azure_oss_chunk_upload_commits_blocks_in_offset_order()
+        {
+            $temporaryStorageRoot = $this->createTemporaryDirectory('laravel-filepond-azure-oss');
+            $blobPrefix = 'azure-prefix';
+            $prefixedStorageRoot = $temporaryStorageRoot.DIRECTORY_SEPARATOR.$blobPrefix;
+            $containerClient = new FakeAzureOssContainerClient($temporaryStorageRoot);
+            $diskName = $this->registerWrappedAzureOssDisk($containerClient, $prefixedStorageRoot, $blobPrefix);
+
+            config([
+                'filepond.temporary_files_disk' => $diskName,
+            ]);
+
+            $serverId = $this->initializeChunkUpload('archive.wbt', 11);
+
+            /** @var Filepond $filepond */
+            $filepond = app(Filepond::class);
+            $finalFilePath = $filepond->getPathFromServerId($serverId);
+            $prefixedBlobPath = $blobPrefix.'/'.$finalFilePath;
+
+            $this->sendChunk($serverId, 'world', 6, 11)->assertStatus(204);
+            $this->sendChunk($serverId, 'hello ', 0, 11)->assertStatus(204);
+
+            $blockBlobClient = $containerClient->getExistingBlockBlobClient($prefixedBlobPath);
+
+            $this->assertNotNull($blockBlobClient);
+            $this->assertSame(
+                [
+                    $this->buildAzureOssBlockId(0),
+                    $this->buildAzureOssBlockId(6),
+                ],
+                $blockBlobClient->committedBlockLists[0]
+            );
+            $this->assertSame('hello world', Storage::disk($diskName)->get($finalFilePath));
         }
 
         private function registerWrappedAzureOssDisk(
@@ -269,7 +307,7 @@ namespace Sopamo\LaravelFilepond\Tests\Feature {
         }
     }
 
-    class FakeAzureOssContainerClient
+    class FakeAzureOssContainerClient implements AzureBlockBlobContainerClient
     {
         /**
          * @var string
@@ -286,7 +324,7 @@ namespace Sopamo\LaravelFilepond\Tests\Feature {
             $this->storageRoot = $storageRoot;
         }
 
-        public function getBlockBlobClient(string $blobPath): FakeAzureOssBlockBlobClient
+        public function getBlockBlobClient(string $blobPath): AzureBlockBlobClient
         {
             if (!isset($this->blockBlobClients[$blobPath])) {
                 $this->blockBlobClients[$blobPath] = new FakeAzureOssBlockBlobClient($this->storageRoot, $blobPath);
@@ -301,7 +339,7 @@ namespace Sopamo\LaravelFilepond\Tests\Feature {
         }
     }
 
-    class FakeAzureOssBlockBlobClient
+    class FakeAzureOssBlockBlobClient implements AzureBlockBlobClient
     {
         /**
          * @var string

@@ -7,7 +7,7 @@ use Illuminate\Support\ServiceProvider;
 
 class LaravelFilepondServiceProvider extends ServiceProvider
 {
-    public function boot()
+    public function boot(): void
     {
         $this->registerRoutes();
         $this->publishes([
@@ -18,7 +18,7 @@ class LaravelFilepondServiceProvider extends ServiceProvider
     /**
      * {@inheritdoc}
      */
-    public function register()
+    public function register(): void
     {
         $this->mergeConfigFrom(
             $this->getConfigFile(),
@@ -31,7 +31,7 @@ class LaravelFilepondServiceProvider extends ServiceProvider
      *
      * @return void
      */
-    protected function registerRoutes()
+    protected function registerRoutes(): void
     {
         Route::group([
             'prefix' => config('filepond.route_prefix', 'filepond'),

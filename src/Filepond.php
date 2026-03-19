@@ -2,43 +2,19 @@
 
 namespace Sopamo\LaravelFilepond;
 
-use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
-use Sopamo\LaravelFilepond\Exceptions\InvalidPathException;
-
 class Filepond
 {
-    /**
-     * Converts the given path into a filepond server id
-     *
-     * @param  string $path
-     *
-     * @return string
-     */
-    public function getServerIdFromPath($path)
+    public function __construct(private readonly ServerIdCodec $serverIdCodec)
     {
-        return Crypt::encryptString($path);
     }
 
-    /**
-     * Converts the given filepond server id into a path
-     *
-     * @param  string $serverId
-     *
-     * @return string
-     */
-    public function getPathFromServerId($serverId)
+    public function getServerIdFromPath(string $path): string
     {
-        if (! trim($serverId)) {
-            throw new InvalidPathException();
-        }
+        return $this->serverIdCodec->encode($path);
+    }
 
-        $filePath = Crypt::decryptString($serverId);
-        if (! Str::startsWith($filePath, config('filepond.temporary_files_path', 'filepond'))) {
-            throw new InvalidPathException();
-        }
-
-        return $filePath;
+    public function getPathFromServerId(string $serverId): string
+    {
+        return $this->serverIdCodec->decode($serverId);
     }
 }

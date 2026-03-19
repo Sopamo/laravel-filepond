@@ -65,4 +65,20 @@ class SingleFileUploadTest extends TestCase
         $deleteResponse->assertStatus(200);
         Storage::disk($diskName)->assertMissing($pathFromServerId);
     }
+
+    /** @test */
+    public function test_delete_returns_bad_request_for_an_invalid_server_id()
+    {
+        $deleteResponse = $this->call(
+            'DELETE',
+            '/filepond/api/process',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'text/plain'],
+            'not-a-valid-server-id'
+        );
+
+        $deleteResponse->assertStatus(400);
+    }
 }

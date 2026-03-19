@@ -38,6 +38,88 @@ class ChunkUploadTest extends TestCase
     }
 
     /** @test */
+    public function test_out_of_order_chunk_upload_is_assembled_once_coverage_is_complete()
+    {
+        $diskName = config('filepond.temporary_files_disk', 'local');
+
+        Storage::fake($diskName);
+
+        $serverId = $this->initializeChunkUpload('archive.wbt', 11);
+
+        /** @var Filepond $filepond */
+        $filepond = app(Filepond::class);
+        $finalFilePath = $filepond->getPathFromServerId($serverId);
+
+        $this->sendChunk($serverId, 'world', 6, 11)->assertStatus(204);
+        Storage::disk($diskName)->assertMissing($finalFilePath);
+
+        $this->sendChunk($serverId, 'hello ', 0, 11)->assertStatus(204);
+
+        Storage::disk($diskName)->assertExists($finalFilePath);
+        $this->assertSame('hello world', Storage::disk($diskName)->get($finalFilePath));
+    }
+
+    /** @test */
+    public function test_chunk_initialization_does_not_create_a_placeholder_file()
+    {
+        $diskName = config('filepond.temporary_files_disk', 'local');
+
+        Storage::fake($diskName);
+
+        $serverId = $this->initializeChunkUpload('archive.wbt', 11);
+
+        /** @var Filepond $filepond */
+        $filepond = app(Filepond::class);
+        $finalFilePath = $filepond->getPathFromServerId($serverId);
+
+        Storage::disk($diskName)->assertMissing($finalFilePath);
+    }
+
+    /** @test */
+    public function test_chunk_upload_with_gap_is_not_assembled()
+    {
+        $diskName = config('filepond.temporary_files_disk', 'local');
+
+        Storage::fake($diskName);
+
+        $serverId = $this->initializeChunkUpload('archive.wbt', 11);
+
+        /** @var Filepond $filepond */
+        $filepond = app(Filepond::class);
+        $finalFilePath = $filepond->getPathFromServerId($serverId);
+        $chunkStoragePath = $this->buildChunkStoragePath($finalFilePath);
+
+        $this->sendChunk($serverId, 'hello', 0, 11)->assertStatus(204);
+        $this->sendChunk($serverId, 'world', 6, 11)->assertStatus(204);
+
+        Storage::disk($diskName)->assertMissing($finalFilePath);
+        Storage::disk($diskName)->assertExists($chunkStoragePath.DIRECTORY_SEPARATOR.'patch.0');
+        Storage::disk($diskName)->assertExists($chunkStoragePath.DIRECTORY_SEPARATOR.'patch.6');
+    }
+
+    /** @test */
+    public function test_chunk_upload_with_overlap_is_not_assembled()
+    {
+        $diskName = config('filepond.temporary_files_disk', 'local');
+
+        Storage::fake($diskName);
+
+        $serverId = $this->initializeChunkUpload('archive.wbt', 11);
+
+        /** @var Filepond $filepond */
+        $filepond = app(Filepond::class);
+        $finalFilePath = $filepond->getPathFromServerId($serverId);
+        $chunkStoragePath = $this->buildChunkStoragePath($finalFilePath);
+
+        $this->sendChunk($serverId, 'hello ', 0, 11)->assertStatus(204);
+        $this->sendChunk($serverId, 'world', 5, 11)->assertStatus(204);
+
+        Storage::disk($diskName)->assertMissing($finalFilePath);
+        Storage::disk($diskName)->assertExists($chunkStoragePath.DIRECTORY_SEPARATOR.'patch.0');
+        Storage::disk($diskName)->assertExists($chunkStoragePath.DIRECTORY_SEPARATOR.'patch.5');
+    }
+
+    /** @test */
     public function test_deleting_a_chunk_upload_only_deletes_its_upload_directory()
     {
         $diskName = config('filepond.temporary_files_disk', 'local');
@@ -72,6 +154,12 @@ class ChunkUploadTest extends TestCase
         Storage::disk($diskName)->assertMissing($finalFilePath);
         Storage::disk($diskName)->assertMissing($chunkStoragePath.DIRECTORY_SEPARATOR.'patch.0');
         Storage::disk($diskName)->assertExists($unrelatedFilePath);
+    }
+
+    /** @test */
+    public function test_chunk_upload_returns_bad_request_for_invalid_server_id()
+    {
+        $this->sendChunk('not-a-valid-server-id', 'test', 0, 4)->assertStatus(400);
     }
 
     private function initializeChunkUpload(string $uploadName, int $uploadLength): string
