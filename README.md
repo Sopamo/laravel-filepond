@@ -43,7 +43,9 @@ You can use any [Laravel disk](https://laravel.com/docs/7.x/filesystem) as the s
 
 If you are using the default `local` disk, make sure the /storage/app/filepond directory exists in your project and is writable.
 
-If you are using the Azure Blob Storage driver with chunked uploads, we are using Azure's append only blobs for faster performance.
+If you are using the legacy `matthewbdaly/laravel-azure-storage` driver with chunked uploads, we use Azure append blobs for faster performance.
+
+If you are using `azure-oss/storage-blob-laravel` / `azure-oss/storage-blob-flysystem`, chunked uploads use native Azure block-blob staging and commit.
 
 ### Filepond client setup
 

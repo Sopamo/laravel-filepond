@@ -2,14 +2,13 @@
 
 namespace Sopamo\LaravelFilepond\Http\Controllers;
 
-use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Sopamo\LaravelFilepond\Exceptions\InvalidPathException;
 use Sopamo\LaravelFilepond\Filepond;
 
 class FilepondController extends BaseController
@@ -18,6 +17,61 @@ class FilepondController extends BaseController
      * Maximum size for Azure append block operations (4MB)
      */
     private const MAX_APPEND_BLOCK_SIZE = 4 * 1024 * 1024;
+
+    /**
+     * @var string
+     */
+    private const STRATEGY_GENERIC_MULTI_FILE = 'generic_multi_file';
+
+    /**
+     * @var string
+     */
+    private const STRATEGY_LEGACY_APPEND_BLOB = 'legacy_append_blob';
+
+    /**
+     * @var string
+     */
+    private const STRATEGY_AZURE_OSS_BLOCK_BLOB = 'azure_oss_block_blob';
+
+    /**
+     * @var string
+     */
+    private const CHUNK_SESSION_FILE = 'upload.json';
+
+    /**
+     * @var string
+     */
+    private const CHUNK_BLOCKS_DIRECTORY = 'blocks';
+
+    /**
+     * @var string
+     */
+    private const LEGACY_AZURE_ADAPTER_CLASS = 'Matthewbdaly\\LaravelAzureStorage\\AzureBlobStorageAdapter';
+
+    /**
+     * @var string
+     */
+    private const LEGACY_AZURE_CLIENT_CLASS = 'MicrosoftAzure\\Storage\\Blob\\BlobRestProxy';
+
+    /**
+     * @var string
+     */
+    private const AZURE_OSS_ADAPTER_CLASS = 'AzureOss\\Storage\\BlobFlysystem\\AzureBlobStorageAdapter';
+
+    /**
+     * @var string
+     */
+    private const AZURE_OSS_CONTAINER_CLIENT_CLASS = 'AzureOss\\Storage\\Blob\\BlobContainerClient';
+
+    /**
+     * @var string
+     */
+    private const AZURE_OSS_BLOB_HTTP_HEADERS_CLASS = 'AzureOss\\Storage\\Blob\\Models\\BlobHttpHeaders';
+
+    /**
+     * @var string
+     */
+    private const AZURE_OSS_COMMIT_BLOCK_LIST_OPTIONS_CLASS = 'AzureOss\\Storage\\Blob\\Models\\CommitBlockListOptions';
 
     /**
      * @var Filepond
@@ -62,79 +116,6 @@ class FilepondController extends BaseController
     }
 
     /**
-     * Check if the current storage driver is Azure Blob Storage
-     *
-     * @param mixed $driver The storage driver instance
-     * @return bool
-     */
-    private function isUsingAzureDriver($driver): bool
-    {
-        try {
-            $reflection = new \ReflectionClass($driver);
-            $property = $reflection->getProperty('adapter');
-            $property->setAccessible(true);
-            $adapter = $property->getValue($driver);
-
-            return $adapter instanceof \Matthewbdaly\LaravelAzureStorage\AzureBlobStorageAdapter;
-        } catch (\Exception $e) {
-            return false;
-        }
-    }
-
-    /**
-     * Get Azure client and container using reflection
-     *
-     * @param mixed $adapter The Azure storage adapter
-     * @return array{0: ?\MicrosoftAzure\Storage\Blob\BlobRestProxy, 1: ?string}
-     */
-    private function getAzureClientAndContainer($adapter): array
-    {
-        try {
-            $adapterReflection = new \ReflectionClass($adapter);
-
-            $clientProperty = $adapterReflection->getProperty('client');
-            $clientProperty->setAccessible(true);
-            $client = $clientProperty->getValue($adapter);
-
-            $containerProperty = $adapterReflection->getProperty('container');
-            $containerProperty->setAccessible(true);
-            $container = $containerProperty->getValue($adapter);
-
-            return [$client, $container];
-        } catch (\Exception $e) {
-            return [null, null];
-        }
-    }
-
-    /**
-     * Create an Azure append blob
-     *
-     * @param \MicrosoftAzure\Storage\Blob\BlobRestProxy $client
-     * @param string $container
-     * @param string $fileLocation
-     * @param Request $request
-     * @return bool
-     */
-    private function createAzureAppendBlob($client, string $container, string $fileLocation, Request $request): bool
-    {
-        try {
-            $options = new \MicrosoftAzure\Storage\Blob\Models\CreateBlobOptions();
-            $options->setContentType($request->header('Content-Type', 'application/octet-stream'));
-
-            $client->createAppendBlob(
-                $container,
-                $fileLocation,
-                $options
-            );
-
-            return true;
-        } catch (\Exception $e) {
-            logger()->error('Error creating Azure append blob: ' . $e->getMessage());
-            return false;
-        }
-    }
-
-    /**
      * This handles the case where filepond wants to start uploading chunks of a file
      * See: https://pqina.nl/filepond/docs/patterns/api/server/
      *
@@ -146,6 +127,7 @@ class FilepondController extends BaseController
         $randomId = Str::random();
         $path = config('filepond.temporary_files_path', 'filepond');
         $disk = config('filepond.temporary_files_disk', 'local');
+        $storage = Storage::disk($disk);
 
         $baseName = $randomId;
         if ($request->header('Upload-Name')) {
@@ -153,33 +135,43 @@ class FilepondController extends BaseController
             $ext = pathinfo($request->header('Upload-Name'), PATHINFO_EXTENSION);
             $baseName = $fileName . '-' . $randomId . '.' . $ext;
         }
-        $fileLocation = $path . DIRECTORY_SEPARATOR . $baseName;
 
-        // Get the storage instance and check if we're using Azure
-        $storage = Storage::disk($disk);
-        $driver = $storage->getDriver();
+        $fileLocation = $path . DIRECTORY_SEPARATOR . $baseName;
+        $uploadId = $this->getChunkUploadId($fileLocation);
+        $context = $this->resolveChunkUploadContext($storage);
+        $strategy = self::STRATEGY_GENERIC_MULTI_FILE;
         $fileCreated = false;
 
-        if ($this->isUsingAzureDriver($driver)) {
-            $reflection = new \ReflectionClass($driver);
-            $property = $reflection->getProperty('adapter');
-            $property->setAccessible(true);
-            $adapter = $property->getValue($driver);
+        if ($context['strategy'] === self::STRATEGY_LEGACY_APPEND_BLOB) {
+            $blobLocation = $this->buildBlobPath($context['blob_path_prefix'], $fileLocation);
+            $fileCreated = $this->createAzureAppendBlob($context['client'], $context['container'], $blobLocation, $request);
 
-            [$client, $container] = $this->getAzureClientAndContainer($adapter);
-
-            if ($client instanceof \MicrosoftAzure\Storage\Blob\BlobRestProxy && !empty($container)) {
-                $fileCreated = $this->createAzureAppendBlob($client, $container, $fileLocation, $request);
+            if ($fileCreated) {
+                $strategy = self::STRATEGY_LEGACY_APPEND_BLOB;
             }
         }
 
-        // Fall back to regular file creation if Azure-specific handling failed or wasn't used
         if (!$fileCreated) {
             $fileCreated = $storage->put($fileLocation, '');
+
+            if ($fileCreated && $context['strategy'] === self::STRATEGY_AZURE_OSS_BLOCK_BLOB) {
+                $strategy = self::STRATEGY_AZURE_OSS_BLOCK_BLOB;
+            }
         }
 
         if (!$fileCreated) {
             abort(500, 'Could not create file');
+        }
+
+        $sessionStored = $this->persistChunkSession($disk, $uploadId, [
+            'strategy' => $strategy,
+            'final_path' => $fileLocation,
+            'content_type' => $request->header('Content-Type', 'application/octet-stream'),
+        ]);
+
+        if (!$sessionStored) {
+            $this->cleanupChunkUpload($storage, $fileLocation, $uploadId);
+            abort(500, 'Could not create upload session');
         }
 
         $filepondId = $this->filepond->getServerIdFromPath($fileLocation);
@@ -193,42 +185,31 @@ class FilepondController extends BaseController
      * Store a chunk using the multi-file approach (and not Azure's append blob)
      *
      * @param Request $request
+     * @param string|null $finalFilePath
+     * @param string|null $uploadId
      * @return \Illuminate\Http\Response
      * @throws FileNotFoundException
      */
-    public function multiFileChunk(Request $request)
+    public function multiFileChunk(Request $request, $finalFilePath = null, $uploadId = null)
     {
-        // Retrieve upload ID
-        $encryptedPath = $request->input('patch');
-        if (!$encryptedPath) {
-            abort(400, 'No id given');
+        if ($finalFilePath === null) {
+            $finalFilePath = $this->getFilePathFromPatch($request);
         }
 
-        try {
-            $finalFilePath = Crypt::decryptString($encryptedPath);
-            $id = basename($finalFilePath);
-        } catch (DecryptException $e) {
-            abort(400, 'Invalid encryption for id');
+        if ($uploadId === null) {
+            $uploadId = $this->getChunkUploadId($finalFilePath);
         }
 
-        // Retrieve disk
         $disk = config('filepond.temporary_files_disk', 'local');
+        $basePath = $this->getChunkBasePath($uploadId);
+        list($offset, $length) = $this->getChunkPatchInfo($request);
 
-        // Load chunks directory
-        $basePath = config('filepond.chunks_path') . DIRECTORY_SEPARATOR . $id;
+        Storage::disk($disk)->put(
+            $basePath . DIRECTORY_SEPARATOR . 'patch.' . $offset,
+            $request->getContent(),
+            ['mimetype' => 'application/octet-stream']
+        );
 
-        // Get patch info
-        $offset = $request->server('HTTP_UPLOAD_OFFSET');
-        $length = $request->server('HTTP_UPLOAD_LENGTH');
-
-        // Validate patch info
-        if (!is_numeric($offset) || !is_numeric($length)) {
-            abort(400, 'Invalid chunk length or offset');
-        }
-
-        // Store chunk
-        Storage::disk($disk)
-            ->put($basePath . DIRECTORY_SEPARATOR . 'patch.' . $offset, $request->getContent(), ['mimetype' => 'application/octet-stream']);
         $this->persistFileIfDone($disk, $basePath, $length, $finalFilePath);
 
         return Response::make('', 204);
@@ -237,49 +218,70 @@ class FilepondController extends BaseController
     /**
      * This checks if all chunks have been uploaded and if they have, it creates the final file
      *
-     * @param $disk
-     * @param $basePath
-     * @param $length
-     * @param $finalFilePath
+     * @param string $disk
+     * @param string $basePath
+     * @param int $length
+     * @param string $finalFilePath
      * @throws FileNotFoundException
      */
     private function persistFileIfDone($disk, $basePath, $length, $finalFilePath)
     {
         $storage = Storage::disk($disk);
-        // Check total chunks size
-        $size = 0;
-        $chunks = $storage
-            ->files($basePath);
-        foreach ($chunks as $chunk) {
-            $size += $storage
-                ->size($chunk);
-        }
+        $chunkFiles = $this->getMultiFileChunkFiles($storage, $basePath);
 
-        // Process finished upload
-        if ($size < $length) {
+        if (empty($chunkFiles)) {
             return;
         }
 
-        // Sort chunks
-        $chunks = collect($chunks);
-        $chunks = $chunks->keyBy(function ($chunk) {
-            return substr($chunk, strrpos($chunk, '.') + 1);
-        });
-        $chunks = $chunks->sortKeys();
+        $sortedChunks = [];
+        $totalSize = 0;
+        $expectedOffset = 0;
 
-        // Append each chunk to the final file
+        foreach ($chunkFiles as $chunk) {
+            $offset = (int) substr($chunk, strrpos($chunk, '.') + 1);
+            $sortedChunks[$offset] = $chunk;
+        }
+
+        ksort($sortedChunks, SORT_NUMERIC);
+
+        foreach ($sortedChunks as $offset => $chunk) {
+            $chunkSize = (int) $storage->size($chunk);
+
+            if ($offset !== $expectedOffset) {
+                abort(400, 'Invalid chunk offsets');
+            }
+
+            $totalSize += $chunkSize;
+            $expectedOffset += $chunkSize;
+        }
+
+        if ($totalSize > $length) {
+            abort(400, 'Invalid chunk length or offset');
+        }
+
+        if ($totalSize < $length) {
+            return;
+        }
+
         $tmpFile = tmpfile();
         $tmpFileName = stream_get_meta_data($tmpFile)['uri'];
-        // Append each chunk to the final file
-        foreach ($chunks as $chunk) {
-            // Get chunk contents
-            $chunkContents = $storage->readStream($chunk);
 
-            // Stream data from chunk to tmp file
+        foreach ($sortedChunks as $chunk) {
+            $chunkContents = $storage->readStream($chunk);
             stream_copy_to_stream($chunkContents, $tmpFile);
+
+            if (is_resource($chunkContents)) {
+                fclose($chunkContents);
+            }
         }
+
+        rewind($tmpFile);
         $storage->put($finalFilePath, $tmpFile);
         $storage->deleteDirectory($basePath);
+
+        if (is_resource($tmpFile)) {
+            fclose($tmpFile);
+        }
 
         if (file_exists($tmpFileName)) {
             unlink($tmpFileName);
@@ -287,9 +289,7 @@ class FilepondController extends BaseController
     }
 
     /**
-     * Handle a single chunk using Azure's append blob features
-     * This is the primary chunk method that uses Azure's native append blob functionality
-     * for better performance with Azure storage, falling back to multiFileChunk if needed
+     * Handle a single chunk upload.
      *
      * @param Request $request
      * @return \Illuminate\Http\Response
@@ -298,103 +298,29 @@ class FilepondController extends BaseController
     {
         $disk = config('filepond.temporary_files_disk', 'local');
         $storage = Storage::disk($disk);
-        $driver = $storage->getDriver();
+        $finalFilePath = $this->getFilePathFromPatch($request);
+        $uploadId = $this->getChunkUploadId($finalFilePath);
+        $session = $this->loadChunkSession($disk, $uploadId);
 
-        if (!$this->isUsingAzureDriver($driver)) {
-            return $this->multiFileChunk($request);
-        }
-
-        // Retrieve upload ID
-        $encryptedPath = $request->input('patch');
-        if (!$encryptedPath) {
-            abort(400, 'No id given');
-        }
-
-        try {
-            $finalFilePath = Crypt::decryptString($encryptedPath);
-        } catch (DecryptException $e) {
-            abort(400, 'Invalid encryption for id');
-        }
-
-        $adapter = null;
-        $client = null;
-        $container = null;
-
-        // Try to get the adapter using reflection since the method might not be directly accessible
-        try {
-            $reflection = new \ReflectionClass($driver);
-            $property = $reflection->getProperty('adapter');
-            $property->setAccessible(true);
-            $adapter = $property->getValue($driver);
-
-            // Get both client and container through reflection since they're private properties
-            $adapterReflection = new \ReflectionClass($adapter);
-
-            $clientProperty = $adapterReflection->getProperty('client');
-            $clientProperty->setAccessible(true);
-            $client = $clientProperty->getValue($adapter);
-
-            $containerProperty = $adapterReflection->getProperty('container');
-            $containerProperty->setAccessible(true);
-            $container = $containerProperty->getValue($adapter);
-        } catch (\Exception $e) {
-            // Fall back to regular chunk method if we can't get the adapter
-            return $this->multiFileChunk($request);
-        }
-
-        if (!$client instanceof \MicrosoftAzure\Storage\Blob\BlobRestProxy) {
-            return $this->multiFileChunk($request);
-        }
-
-        if (empty($container)) {
-            // Fall back to regular chunk method if can't determine container
-            return $this->multiFileChunk($request);
-        }
-
-        // Get patch info
-        $offset = $request->server('HTTP_UPLOAD_OFFSET');
-        $length = $request->server('HTTP_UPLOAD_LENGTH');
-
-        // Validate patch info
-        if (!is_numeric($offset) || !is_numeric($length)) {
-            abort(400, 'Invalid chunk length or offset');
-        }
-
-        try {
-            $content = $request->getContent();
-            $contentLength = strlen($content);
-
-            // Create options for append block operations
-            $appendBlockOptions = new \MicrosoftAzure\Storage\Blob\Models\AppendBlockOptions();
-
-            // If content is larger than Azure's maximum append block size, split it into smaller chunks
-            if ($contentLength > self::MAX_APPEND_BLOCK_SIZE) {
-                $position = 0;
-                while ($position < $contentLength) {
-                    $chunk = substr($content, $position, self::MAX_APPEND_BLOCK_SIZE);
-                    $client->appendBlock(
-                        $container,
-                        $finalFilePath,
-                        $chunk,
-                        $appendBlockOptions
-                    );
-                    $position += self::MAX_APPEND_BLOCK_SIZE;
-                }
-            } else {
-                // Content is small enough, append it directly
-                $client->appendBlock(
-                    $container,
-                    $finalFilePath,
-                    $content,
-                    $appendBlockOptions
-                );
+        if (is_array($session) && isset($session['strategy'])) {
+            if ($session['strategy'] === self::STRATEGY_AZURE_OSS_BLOCK_BLOB) {
+                return $this->azureOssChunk($request, $storage, $disk, $finalFilePath, $uploadId, $session);
             }
 
-            return Response::make('', 204);
-        } catch (\Exception $e) {
-            // Fall back to regular chunk method if append blob operations fail
-            return $this->multiFileChunk($request);
+            if ($session['strategy'] === self::STRATEGY_LEGACY_APPEND_BLOB) {
+                return $this->legacyAzureChunk($request, $storage, $finalFilePath, $uploadId, false);
+            }
+
+            return $this->multiFileChunk($request, $finalFilePath, $uploadId);
         }
+
+        $context = $this->resolveChunkUploadContext($storage);
+
+        if ($context['strategy'] === self::STRATEGY_LEGACY_APPEND_BLOB) {
+            return $this->legacyAzureChunk($request, $storage, $finalFilePath, $uploadId, true);
+        }
+
+        return $this->multiFileChunk($request, $finalFilePath, $uploadId);
     }
 
     /**
@@ -408,8 +334,31 @@ class FilepondController extends BaseController
     public function delete(Request $request)
     {
         $filePath = $this->filepond->getPathFromServerId($request->getContent());
+        $disk = config('filepond.temporary_files_disk', 'local');
+        $storage = Storage::disk($disk);
+        $uploadId = $this->getChunkUploadId($filePath);
+        $chunkBasePath = $this->getChunkBasePath($uploadId);
+        $temporaryFilesPath = $this->normalizePath(config('filepond.temporary_files_path', 'filepond'));
         $folderPath = dirname($filePath);
-        if (Storage::disk(config('filepond.temporary_files_disk', 'local'))->deleteDirectory($folderPath)) {
+        $isChunkedUpload = $this->loadChunkSession($disk, $uploadId) !== null
+            || $this->normalizePath($folderPath) === $temporaryFilesPath;
+
+        if ($isChunkedUpload) {
+            $deletedFile = $this->deleteFileIfExists($storage, $filePath);
+            $deletedChunks = $this->deleteDirectoryIfExists($storage, $chunkBasePath);
+
+            if ($deletedFile && $deletedChunks) {
+                return Response::make('', 200, [
+                    'Content-Type' => 'text/plain',
+                ]);
+            }
+
+            return Response::make('', 500, [
+                'Content-Type' => 'text/plain',
+            ]);
+        }
+
+        if ($storage->deleteDirectory($folderPath)) {
             return Response::make('', 200, [
                 'Content-Type' => 'text/plain',
             ]);
@@ -418,5 +367,661 @@ class FilepondController extends BaseController
         return Response::make('', 500, [
             'Content-Type' => 'text/plain',
         ]);
+    }
+
+    /**
+     * @param mixed $storage
+     * @return array<string, mixed>
+     */
+    private function resolveChunkUploadContext($storage)
+    {
+        $adapter = $this->getStorageAdapter($storage);
+
+        if (!is_object($adapter)) {
+            return [
+                'strategy' => self::STRATEGY_GENERIC_MULTI_FILE,
+            ];
+        }
+
+        if (class_exists(self::LEGACY_AZURE_ADAPTER_CLASS) && is_a($adapter, self::LEGACY_AZURE_ADAPTER_CLASS)) {
+            list($client, $container) = $this->getLegacyAzureClientAndContainer($adapter);
+
+            if (is_object($client) && class_exists(self::LEGACY_AZURE_CLIENT_CLASS) && is_a($client, self::LEGACY_AZURE_CLIENT_CLASS) && is_string($container) && trim($container) !== '') {
+                return [
+                    'strategy' => self::STRATEGY_LEGACY_APPEND_BLOB,
+                    'client' => $client,
+                    'container' => $container,
+                    'blob_path_prefix' => $this->resolveLegacyAzureBlobPrefix($storage, $adapter),
+                ];
+            }
+        }
+
+        if (class_exists(self::AZURE_OSS_ADAPTER_CLASS) && is_a($adapter, self::AZURE_OSS_ADAPTER_CLASS)) {
+            $containerClient = $this->getObjectProperty($adapter, 'containerClient');
+
+            if (is_object($containerClient) && class_exists(self::AZURE_OSS_CONTAINER_CLIENT_CLASS) && is_a($containerClient, self::AZURE_OSS_CONTAINER_CLIENT_CLASS)) {
+                return [
+                    'strategy' => self::STRATEGY_AZURE_OSS_BLOCK_BLOB,
+                    'container_client' => $containerClient,
+                    'blob_path_prefix' => $this->resolveAzureOssBlobPrefix($storage),
+                ];
+            }
+        }
+
+        return [
+            'strategy' => self::STRATEGY_GENERIC_MULTI_FILE,
+        ];
+    }
+
+    /**
+     * @param mixed $storage
+     * @return mixed
+     */
+    private function getStorageAdapter($storage)
+    {
+        try {
+            if (method_exists($storage, 'getAdapter')) {
+                return $storage->getAdapter();
+            }
+        } catch (\Exception $e) {
+            // Fall through to driver reflection.
+        }
+
+        try {
+            if (method_exists($storage, 'getDriver')) {
+                $driver = $storage->getDriver();
+
+                if (is_object($driver) && method_exists($driver, 'getAdapter')) {
+                    return $driver->getAdapter();
+                }
+
+                if (is_object($driver)) {
+                    return $this->getObjectProperty($driver, 'adapter');
+                }
+            }
+        } catch (\Exception $e) {
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param mixed $object
+     * @param string $property
+     * @return mixed
+     */
+    private function getObjectProperty($object, $property)
+    {
+        if (!is_object($object)) {
+            return null;
+        }
+
+        try {
+            $reflection = new \ReflectionClass($object);
+
+            while ($reflection instanceof \ReflectionClass) {
+                if ($reflection->hasProperty($property)) {
+                    $reflectionProperty = $reflection->getProperty($property);
+                    $reflectionProperty->setAccessible(true);
+
+                    return $reflectionProperty->getValue($object);
+                }
+
+                $reflection = $reflection->getParentClass();
+            }
+        } catch (\Exception $e) {
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param mixed $storage
+     * @param mixed $adapter
+     * @return string
+     */
+    private function resolveLegacyAzureBlobPrefix($storage, $adapter)
+    {
+        $config = $this->getStorageConfig($storage);
+
+        if (isset($config['prefix']) && is_string($config['prefix'])) {
+            return $config['prefix'];
+        }
+
+        $prefix = $this->getObjectProperty($adapter, 'prefix');
+
+        if (is_string($prefix)) {
+            return $prefix;
+        }
+
+        return '';
+    }
+
+    /**
+     * @param mixed $storage
+     * @return string
+     */
+    private function resolveAzureOssBlobPrefix($storage)
+    {
+        $config = $this->getStorageConfig($storage);
+
+        if (isset($config['prefix']) && is_string($config['prefix']) && trim($config['prefix']) !== '') {
+            return $config['prefix'];
+        }
+
+        if (isset($config['root']) && is_string($config['root']) && trim($config['root']) !== '') {
+            return $config['root'];
+        }
+
+        return '';
+    }
+
+    /**
+     * @param mixed $storage
+     * @return array
+     */
+    private function getStorageConfig($storage)
+    {
+        try {
+            if (method_exists($storage, 'getConfig')) {
+                return (array) $storage->getConfig();
+            }
+        } catch (\Exception $e) {
+            return [];
+        }
+
+        return (array) config('filesystems.disks.' . config('filepond.temporary_files_disk', 'local'), []);
+    }
+
+    /**
+     * @param mixed $adapter
+     * @return array
+     */
+    private function getLegacyAzureClientAndContainer($adapter)
+    {
+        $client = $this->getObjectProperty($adapter, 'client');
+        $container = $this->getObjectProperty($adapter, 'container');
+
+        if (!is_string($container)) {
+            $container = null;
+        }
+
+        return [$client, $container];
+    }
+
+    /**
+     * Create an Azure append blob
+     *
+     * @param mixed $client
+     * @param string $container
+     * @param string $blobLocation
+     * @param Request $request
+     * @return bool
+     */
+    private function createAzureAppendBlob($client, $container, $blobLocation, Request $request)
+    {
+        try {
+            $options = new \MicrosoftAzure\Storage\Blob\Models\CreateBlobOptions();
+            $options->setContentType($request->header('Content-Type', 'application/octet-stream'));
+
+            $client->createAppendBlob(
+                $container,
+                $blobLocation,
+                $options
+            );
+
+            return true;
+        } catch (\Exception $e) {
+            logger()->error('Error creating Azure append blob: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * @param Request $request
+     * @param mixed $storage
+     * @param string $finalFilePath
+     * @param string $uploadId
+     * @param bool $allowFallback
+     * @return \Illuminate\Http\Response
+     * @throws FileNotFoundException
+     */
+    private function legacyAzureChunk(Request $request, $storage, $finalFilePath, $uploadId, $allowFallback)
+    {
+        $context = $this->resolveChunkUploadContext($storage);
+
+        if ($context['strategy'] !== self::STRATEGY_LEGACY_APPEND_BLOB) {
+            if ($allowFallback) {
+                return $this->multiFileChunk($request, $finalFilePath, $uploadId);
+            }
+
+            abort(500, 'Could not continue the chunk upload');
+        }
+
+        $this->getChunkPatchInfo($request);
+
+        try {
+            $content = $request->getContent();
+            $contentLength = strlen($content);
+            $blobLocation = $this->buildBlobPath($context['blob_path_prefix'], $finalFilePath);
+            $appendBlockOptions = new \MicrosoftAzure\Storage\Blob\Models\AppendBlockOptions();
+
+            if ($contentLength > self::MAX_APPEND_BLOCK_SIZE) {
+                $position = 0;
+
+                while ($position < $contentLength) {
+                    $chunk = substr($content, $position, self::MAX_APPEND_BLOCK_SIZE);
+                    $context['client']->appendBlock(
+                        $context['container'],
+                        $blobLocation,
+                        $chunk,
+                        $appendBlockOptions
+                    );
+
+                    $position += self::MAX_APPEND_BLOCK_SIZE;
+                }
+            } else {
+                $context['client']->appendBlock(
+                    $context['container'],
+                    $blobLocation,
+                    $content,
+                    $appendBlockOptions
+                );
+            }
+
+            return Response::make('', 204);
+        } catch (\Exception $e) {
+            if ($allowFallback) {
+                return $this->multiFileChunk($request, $finalFilePath, $uploadId);
+            }
+
+            abort(500, 'Could not append chunk');
+        }
+    }
+
+    /**
+     * @param Request $request
+     * @param mixed $storage
+     * @param string $disk
+     * @param string $finalFilePath
+     * @param string $uploadId
+     * @param array<string, mixed> $session
+     * @return \Illuminate\Http\Response
+     */
+    private function azureOssChunk(Request $request, $storage, $disk, $finalFilePath, $uploadId, array $session)
+    {
+        $context = $this->resolveChunkUploadContext($storage);
+
+        if ($context['strategy'] !== self::STRATEGY_AZURE_OSS_BLOCK_BLOB) {
+            abort(500, 'Could not continue the chunk upload');
+        }
+
+        list($offset, $length) = $this->getChunkPatchInfo($request);
+        $content = $request->getContent();
+        $blockId = $this->getAzureOssBlockId($offset);
+        $blobLocation = $this->buildBlobPath($context['blob_path_prefix'], $finalFilePath);
+        $blockBlobClient = $context['container_client']->getBlockBlobClient($blobLocation);
+
+        try {
+            $blockBlobClient->stageBlock($blockId, $content);
+        } catch (\Exception $e) {
+            abort(500, 'Could not stage chunk');
+        }
+
+        $markerStored = $storage->put($this->getChunkBlockMarkerPath($uploadId, $offset), json_encode([
+            'offset' => $offset,
+            'size' => strlen($content),
+            'block_id' => $blockId,
+        ]));
+
+        if ($markerStored === false) {
+            abort(500, 'Could not persist chunk metadata');
+        }
+
+        $markers = $this->getAzureOssBlockMarkers($storage, $uploadId);
+        $blockIds = $this->getAzureOssCommitBlockIds($markers, $length);
+
+        if ($blockIds === null) {
+            return Response::make('', 204);
+        }
+
+        $commitOptions = $this->makeAzureOssCommitBlockListOptions(
+            isset($session['content_type']) && is_string($session['content_type']) ? $session['content_type'] : 'application/octet-stream'
+        );
+
+        if ($commitOptions === null) {
+            abort(500, 'Could not prepare block blob commit');
+        }
+
+        try {
+            $blockBlobClient->commitBlockList($blockIds, $commitOptions);
+            $this->deleteDirectoryIfExists($storage, $this->getChunkBasePath($uploadId));
+        } catch (\Exception $e) {
+            abort(500, 'Could not commit block blob');
+        }
+
+        return Response::make('', 204);
+    }
+
+    /**
+     * @param string $contentType
+     * @return mixed
+     */
+    private function makeAzureOssCommitBlockListOptions($contentType)
+    {
+        if (!class_exists(self::AZURE_OSS_BLOB_HTTP_HEADERS_CLASS) || !class_exists(self::AZURE_OSS_COMMIT_BLOCK_LIST_OPTIONS_CLASS)) {
+            return null;
+        }
+
+        $headersClass = self::AZURE_OSS_BLOB_HTTP_HEADERS_CLASS;
+        $optionsClass = self::AZURE_OSS_COMMIT_BLOCK_LIST_OPTIONS_CLASS;
+        $headers = new $headersClass();
+        $headers->contentType = $contentType;
+
+        return new $optionsClass($headers);
+    }
+
+    /**
+     * @param mixed $storage
+     * @param string $uploadId
+     * @return array<int, array<string, mixed>>
+     */
+    private function getAzureOssBlockMarkers($storage, $uploadId)
+    {
+        $markers = [];
+        $blockPath = $this->getChunkBlocksPath($uploadId);
+
+        if (!$this->storagePathExists($storage, $blockPath)) {
+            return $markers;
+        }
+
+        foreach ($storage->files($blockPath) as $markerPath) {
+            if (pathinfo($markerPath, PATHINFO_EXTENSION) !== 'json') {
+                continue;
+            }
+
+            $contents = $storage->get($markerPath);
+            $marker = json_decode($contents, true);
+
+            if (!is_array($marker) || !isset($marker['offset'], $marker['size'], $marker['block_id'])) {
+                continue;
+            }
+
+            $offset = (int) $marker['offset'];
+            $markers[$offset] = [
+                'offset' => $offset,
+                'size' => (int) $marker['size'],
+                'block_id' => (string) $marker['block_id'],
+            ];
+        }
+
+        ksort($markers, SORT_NUMERIC);
+
+        return $markers;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $markers
+     * @param int $length
+     * @return array<int, string>|null
+     */
+    private function getAzureOssCommitBlockIds(array $markers, $length)
+    {
+        $expectedOffset = 0;
+        $totalSize = 0;
+        $blockIds = [];
+
+        foreach ($markers as $offset => $marker) {
+            $size = (int) $marker['size'];
+
+            if ($offset !== $expectedOffset) {
+                abort(400, 'Invalid chunk offsets');
+            }
+
+            $totalSize += $size;
+            $expectedOffset += $size;
+            $blockIds[] = (string) $marker['block_id'];
+        }
+
+        if ($totalSize > $length) {
+            abort(400, 'Invalid chunk length or offset');
+        }
+
+        if ($totalSize < $length) {
+            return null;
+        }
+
+        return $blockIds;
+    }
+
+    /**
+     * @param Request $request
+     * @return array<int, int>
+     */
+    private function getChunkPatchInfo(Request $request)
+    {
+        $offset = $request->server('HTTP_UPLOAD_OFFSET');
+        $length = $request->server('HTTP_UPLOAD_LENGTH');
+
+        if (!is_numeric($offset) || !is_numeric($length)) {
+            abort(400, 'Invalid chunk length or offset');
+        }
+
+        return [(int) $offset, (int) $length];
+    }
+
+    /**
+     * @param Request $request
+     * @return string
+     */
+    private function getFilePathFromPatch(Request $request)
+    {
+        $encryptedPath = $request->input('patch');
+
+        if (!$encryptedPath) {
+            abort(400, 'No id given');
+        }
+
+        try {
+            return $this->filepond->getPathFromServerId($encryptedPath);
+        } catch (InvalidPathException $e) {
+            abort(400, 'Invalid encryption for id');
+        }
+    }
+
+    /**
+     * @param string $filePath
+     * @return string
+     */
+    private function getChunkUploadId($filePath)
+    {
+        return basename($filePath);
+    }
+
+    /**
+     * @param string $uploadId
+     * @return string
+     */
+    private function getChunkBasePath($uploadId)
+    {
+        return config('filepond.chunks_path', 'filepond' . DIRECTORY_SEPARATOR . 'chunks') . DIRECTORY_SEPARATOR . $uploadId;
+    }
+
+    /**
+     * @param string $uploadId
+     * @return string
+     */
+    private function getChunkSessionPath($uploadId)
+    {
+        return $this->getChunkBasePath($uploadId) . DIRECTORY_SEPARATOR . self::CHUNK_SESSION_FILE;
+    }
+
+    /**
+     * @param string $uploadId
+     * @return string
+     */
+    private function getChunkBlocksPath($uploadId)
+    {
+        return $this->getChunkBasePath($uploadId) . DIRECTORY_SEPARATOR . self::CHUNK_BLOCKS_DIRECTORY;
+    }
+
+    /**
+     * @param string $uploadId
+     * @param int $offset
+     * @return string
+     */
+    private function getChunkBlockMarkerPath($uploadId, $offset)
+    {
+        return $this->getChunkBlocksPath($uploadId) . DIRECTORY_SEPARATOR . $offset . '.json';
+    }
+
+    /**
+     * @param string $disk
+     * @param string $uploadId
+     * @param array<string, mixed> $session
+     * @return bool
+     */
+    private function persistChunkSession($disk, $uploadId, array $session)
+    {
+        $contents = json_encode($session);
+
+        if ($contents === false) {
+            return false;
+        }
+
+        return Storage::disk($disk)->put($this->getChunkSessionPath($uploadId), $contents) !== false;
+    }
+
+    /**
+     * @param string $disk
+     * @param string $uploadId
+     * @return array<string, mixed>|null
+     */
+    private function loadChunkSession($disk, $uploadId)
+    {
+        $storage = Storage::disk($disk);
+        $sessionPath = $this->getChunkSessionPath($uploadId);
+
+        if (!$this->storagePathExists($storage, $sessionPath)) {
+            return null;
+        }
+
+        $contents = $storage->get($sessionPath);
+        $session = json_decode($contents, true);
+
+        return is_array($session) ? $session : null;
+    }
+
+    /**
+     * @param mixed $storage
+     * @param string $basePath
+     * @return array<int, string>
+     */
+    private function getMultiFileChunkFiles($storage, $basePath)
+    {
+        $chunks = [];
+
+        if (!$this->storagePathExists($storage, $basePath)) {
+            return $chunks;
+        }
+
+        foreach ($storage->files($basePath) as $file) {
+            if (Str::startsWith(basename($file), 'patch.')) {
+                $chunks[] = $file;
+            }
+        }
+
+        return $chunks;
+    }
+
+    /**
+     * @param mixed $storage
+     * @param string $filePath
+     * @param string $uploadId
+     * @return void
+     */
+    private function cleanupChunkUpload($storage, $filePath, $uploadId)
+    {
+        $this->deleteFileIfExists($storage, $filePath);
+        $this->deleteDirectoryIfExists($storage, $this->getChunkBasePath($uploadId));
+    }
+
+    /**
+     * @param mixed $storage
+     * @param string $path
+     * @return bool
+     */
+    private function deleteFileIfExists($storage, $path)
+    {
+        if (!$this->storagePathExists($storage, $path)) {
+            return true;
+        }
+
+        return $storage->delete($path);
+    }
+
+    /**
+     * @param mixed $storage
+     * @param string $path
+     * @return bool
+     */
+    private function deleteDirectoryIfExists($storage, $path)
+    {
+        if (!$this->storagePathExists($storage, $path)) {
+            return true;
+        }
+
+        return $storage->deleteDirectory($path);
+    }
+
+    /**
+     * @param mixed $storage
+     * @param string $path
+     * @return bool
+     */
+    private function storagePathExists($storage, $path)
+    {
+        try {
+            return $storage->exists($path);
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * @param string $prefix
+     * @param string $path
+     * @return string
+     */
+    private function buildBlobPath($prefix, $path)
+    {
+        $normalizedPrefix = trim($this->normalizePath($prefix), '/');
+        $normalizedPath = trim($this->normalizePath($path), '/');
+
+        if ($normalizedPrefix === '') {
+            return $normalizedPath;
+        }
+
+        return $normalizedPrefix . '/' . $normalizedPath;
+    }
+
+    /**
+     * @param string $path
+     * @return string
+     */
+    private function normalizePath($path)
+    {
+        return str_replace('\\', '/', (string) $path);
+    }
+
+    /**
+     * @param int $offset
+     * @return string
+     */
+    private function getAzureOssBlockId($offset)
+    {
+        return base64_encode(str_pad((string) $offset, 20, '0', STR_PAD_LEFT));
     }
 }
