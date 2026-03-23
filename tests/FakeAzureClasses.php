@@ -77,9 +77,21 @@ if (!class_exists('AzureOss\\Storage\\Blob\\Specialized\\BlockBlobClient', false
          */
         private $path;
 
+        /**
+         * @var mixed
+         */
+        private $client;
+
+        /**
+         * @var string
+         */
+        private $uri;
+
         public function __construct($root, $blobName)
         {
             $this->path = $this->buildPath($root, $blobName);
+            $this->uri = $this->path;
+            $this->client = new BlockBlobClientFakeHttpClient($this->path);
         }
 
         public function stageBlock($base64BlockId, $content, $options = null)
@@ -110,11 +122,87 @@ if (!class_exists('AzureOss\\Storage\\Blob\\Specialized\\BlockBlobClient', false
             unset(self::$stagedBlocks[$this->path]);
         }
 
+        /**
+         * @param string $path
+         * @return array<string, string>
+         */
+        public static function getStagedBlocksForPath($path)
+        {
+            if (!isset(self::$stagedBlocks[$path])) {
+                return [];
+            }
+
+            return self::$stagedBlocks[$path];
+        }
+
         private function buildPath($root, $blobName)
         {
             $normalizedBlob = trim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, (string) $blobName), DIRECTORY_SEPARATOR);
 
             return rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $normalizedBlob;
+        }
+    }
+
+    class BlockBlobClientFakeHttpClient
+    {
+        /**
+         * @var string
+         */
+        private $path;
+
+        public function __construct($path)
+        {
+            $this->path = $path;
+        }
+
+        public function get($uri, array $options = [])
+        {
+            $xml = new \SimpleXMLElement('<BlockList></BlockList>');
+            $uncommittedBlocks = $xml->addChild('UncommittedBlocks');
+
+            foreach (BlockBlobClient::getStagedBlocksForPath($this->path) as $blockId => $content) {
+                $block = $uncommittedBlocks->addChild('Block');
+                $block->addChild('Name', $blockId);
+                $block->addChild('Size', (string) strlen($content));
+            }
+
+            return new BlockBlobClientFakeResponse($xml->asXML());
+        }
+    }
+
+    class BlockBlobClientFakeResponse
+    {
+        /**
+         * @var string
+         */
+        private $contents;
+
+        public function __construct($contents)
+        {
+            $this->contents = $contents;
+        }
+
+        public function getBody()
+        {
+            return new BlockBlobClientFakeBody($this->contents);
+        }
+    }
+
+    class BlockBlobClientFakeBody
+    {
+        /**
+         * @var string
+         */
+        private $contents;
+
+        public function __construct($contents)
+        {
+            $this->contents = $contents;
+        }
+
+        public function getContents()
+        {
+            return $this->contents;
         }
     }
 }
@@ -149,6 +237,9 @@ if (!class_exists('AzureOss\\Storage\\Blob\\Models\\CommitBlockListOptions', fal
 namespace AzureOss\Storage\BlobFlysystem;
 
 use AzureOss\Storage\Blob\BlobContainerClient;
+use League\Flysystem\Config;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\Local\LocalFilesystemAdapter;
 
 if (!class_exists('AzureOss\\Storage\\BlobFlysystem\\AzureBlobStorageAdapter', false)) {
@@ -163,6 +254,106 @@ if (!class_exists('AzureOss\\Storage\\BlobFlysystem\\AzureBlobStorageAdapter', f
         {
             parent::__construct($root);
             $this->containerClient = $containerClient;
+        }
+    }
+}
+
+if (!class_exists('AzureOss\\Storage\\BlobFlysystem\\WrappedAzureOssAdapter', false)) {
+    class WrappedAzureOssAdapter implements FilesystemAdapter
+    {
+        /**
+         * @var FilesystemAdapter
+         */
+        private $innerAdapter;
+
+        public function __construct(FilesystemAdapter $innerAdapter)
+        {
+            $this->innerAdapter = $innerAdapter;
+        }
+
+        public function fileExists(string $path): bool
+        {
+            return $this->innerAdapter->fileExists($path);
+        }
+
+        public function directoryExists(string $path): bool
+        {
+            return $this->innerAdapter->directoryExists($path);
+        }
+
+        public function write(string $path, string $contents, Config $config): void
+        {
+            $this->innerAdapter->write($path, $contents, $config);
+        }
+
+        public function writeStream(string $path, $contents, Config $config): void
+        {
+            $this->innerAdapter->writeStream($path, $contents, $config);
+        }
+
+        public function read(string $path): string
+        {
+            return $this->innerAdapter->read($path);
+        }
+
+        public function readStream(string $path)
+        {
+            return $this->innerAdapter->readStream($path);
+        }
+
+        public function delete(string $path): void
+        {
+            $this->innerAdapter->delete($path);
+        }
+
+        public function deleteDirectory(string $path): void
+        {
+            $this->innerAdapter->deleteDirectory($path);
+        }
+
+        public function createDirectory(string $path, Config $config): void
+        {
+            $this->innerAdapter->createDirectory($path, $config);
+        }
+
+        public function setVisibility(string $path, string $visibility): void
+        {
+            $this->innerAdapter->setVisibility($path, $visibility);
+        }
+
+        public function visibility(string $path): FileAttributes
+        {
+            return $this->innerAdapter->visibility($path);
+        }
+
+        public function mimeType(string $path): FileAttributes
+        {
+            return $this->innerAdapter->mimeType($path);
+        }
+
+        public function lastModified(string $path): FileAttributes
+        {
+            return $this->innerAdapter->lastModified($path);
+        }
+
+        public function fileSize(string $path): FileAttributes
+        {
+            return $this->innerAdapter->fileSize($path);
+        }
+
+        public function listContents(string $path, bool $deep): iterable
+        {
+            return $this->innerAdapter->listContents($path, $deep);
+        }
+
+        public function move(string $source, string $destination, Config $config): void
+        {
+            $this->innerAdapter->move($source, $destination, $config);
+        }
+
+        public function copy(string $source, string $destination, Config $config): void
+        {
+            $this->innerAdapter->copy($source, $destination, $config);
         }
     }
 }

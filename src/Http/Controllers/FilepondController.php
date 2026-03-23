@@ -41,11 +41,6 @@ class FilepondController extends BaseController
     /**
      * @var string
      */
-    private const CHUNK_BLOCKS_DIRECTORY = 'blocks';
-
-    /**
-     * @var string
-     */
     private const LEGACY_AZURE_ADAPTER_CLASS = 'Matthewbdaly\\LaravelAzureStorage\\AzureBlobStorageAdapter';
 
     /**
@@ -375,29 +370,33 @@ class FilepondController extends BaseController
      */
     private function resolveChunkUploadContext($storage)
     {
-        $adapter = $this->getStorageAdapter($storage);
+        $storageAdapter = $this->getStorageAdapter($storage);
 
-        if (!is_object($adapter)) {
+        if (!is_object($storageAdapter)) {
             return [
                 'strategy' => self::STRATEGY_GENERIC_MULTI_FILE,
             ];
         }
 
-        if (class_exists(self::LEGACY_AZURE_ADAPTER_CLASS) && is_a($adapter, self::LEGACY_AZURE_ADAPTER_CLASS)) {
-            list($client, $container) = $this->getLegacyAzureClientAndContainer($adapter);
+        $legacyAzureAdapter = $this->findStorageAdapterByClass($storageAdapter, self::LEGACY_AZURE_ADAPTER_CLASS);
+
+        if ($legacyAzureAdapter !== null) {
+            list($client, $container) = $this->getLegacyAzureClientAndContainer($legacyAzureAdapter);
 
             if (is_object($client) && class_exists(self::LEGACY_AZURE_CLIENT_CLASS) && is_a($client, self::LEGACY_AZURE_CLIENT_CLASS) && is_string($container) && trim($container) !== '') {
                 return [
                     'strategy' => self::STRATEGY_LEGACY_APPEND_BLOB,
                     'client' => $client,
                     'container' => $container,
-                    'blob_path_prefix' => $this->resolveLegacyAzureBlobPrefix($storage, $adapter),
+                    'blob_path_prefix' => $this->resolveLegacyAzureBlobPrefix($storage, $legacyAzureAdapter),
                 ];
             }
         }
 
-        if (class_exists(self::AZURE_OSS_ADAPTER_CLASS) && is_a($adapter, self::AZURE_OSS_ADAPTER_CLASS)) {
-            $containerClient = $this->getObjectProperty($adapter, 'containerClient');
+        $azureOssAdapter = $this->findStorageAdapterByClass($storageAdapter, self::AZURE_OSS_ADAPTER_CLASS);
+
+        if ($azureOssAdapter !== null) {
+            $containerClient = $this->getObjectProperty($azureOssAdapter, 'containerClient');
 
             if (is_object($containerClient) && class_exists(self::AZURE_OSS_CONTAINER_CLIENT_CLASS) && is_a($containerClient, self::AZURE_OSS_CONTAINER_CLIENT_CLASS)) {
                 return [
@@ -670,18 +669,8 @@ class FilepondController extends BaseController
             abort(500, 'Could not stage chunk');
         }
 
-        $markerStored = $storage->put($this->getChunkBlockMarkerPath($uploadId, $offset), json_encode([
-            'offset' => $offset,
-            'size' => strlen($content),
-            'block_id' => $blockId,
-        ]));
-
-        if ($markerStored === false) {
-            abort(500, 'Could not persist chunk metadata');
-        }
-
-        $markers = $this->getAzureOssBlockMarkers($storage, $uploadId);
-        $blockIds = $this->getAzureOssCommitBlockIds($markers, $length);
+        $uncommittedBlocks = $this->getAzureOssUncommittedBlocks($blockBlobClient);
+        $blockIds = $this->getAzureOssCommitBlockIds($uncommittedBlocks, $length);
 
         if ($blockIds === null) {
             return Response::make('', 204);
@@ -724,42 +713,59 @@ class FilepondController extends BaseController
     }
 
     /**
-     * @param mixed $storage
-     * @param string $uploadId
+     * @param mixed $blockBlobClient
      * @return array<int, array<string, mixed>>
      */
-    private function getAzureOssBlockMarkers($storage, $uploadId)
+    private function getAzureOssUncommittedBlocks($blockBlobClient)
     {
-        $markers = [];
-        $blockPath = $this->getChunkBlocksPath($uploadId);
+        $client = $this->getObjectProperty($blockBlobClient, 'client');
+        $uri = $this->getObjectProperty($blockBlobClient, 'uri');
 
-        if (!$this->storagePathExists($storage, $blockPath)) {
-            return $markers;
+        if (!is_object($client) || $uri === null || !method_exists($client, 'get')) {
+            abort(500, 'Could not inspect block blob upload state');
         }
 
-        foreach ($storage->files($blockPath) as $markerPath) {
-            if (pathinfo($markerPath, PATHINFO_EXTENSION) !== 'json') {
+        try {
+            $response = $client->get($uri, [
+                \GuzzleHttp\RequestOptions::QUERY => [
+                    'comp' => 'blocklist',
+                    'blocklisttype' => 'uncommitted',
+                ],
+            ]);
+            $body = $response->getBody()->getContents();
+        } catch (\Exception $e) {
+            abort(500, 'Could not inspect block blob upload state');
+        }
+
+        $xml = @simplexml_load_string($body);
+
+        if (!($xml instanceof \SimpleXMLElement)) {
+            abort(500, 'Could not inspect block blob upload state');
+        }
+
+        $blocks = [];
+
+        if (!isset($xml->UncommittedBlocks)) {
+            return $blocks;
+        }
+
+        foreach ($xml->UncommittedBlocks->Block as $block) {
+            if (!isset($block->Name, $block->Size)) {
                 continue;
             }
 
-            $contents = $storage->get($markerPath);
-            $marker = json_decode($contents, true);
-
-            if (!is_array($marker) || !isset($marker['offset'], $marker['size'], $marker['block_id'])) {
-                continue;
-            }
-
-            $offset = (int) $marker['offset'];
-            $markers[$offset] = [
+            $blockId = (string) $block->Name;
+            $offset = $this->getAzureOssOffsetFromBlockId($blockId);
+            $blocks[$offset] = [
                 'offset' => $offset,
-                'size' => (int) $marker['size'],
-                'block_id' => (string) $marker['block_id'],
+                'size' => (int) $block->Size,
+                'block_id' => $blockId,
             ];
         }
 
-        ksort($markers, SORT_NUMERIC);
+        ksort($blocks, SORT_NUMERIC);
 
-        return $markers;
+        return $blocks;
     }
 
     /**
@@ -856,25 +862,6 @@ class FilepondController extends BaseController
     private function getChunkSessionPath($uploadId)
     {
         return $this->getChunkBasePath($uploadId) . DIRECTORY_SEPARATOR . self::CHUNK_SESSION_FILE;
-    }
-
-    /**
-     * @param string $uploadId
-     * @return string
-     */
-    private function getChunkBlocksPath($uploadId)
-    {
-        return $this->getChunkBasePath($uploadId) . DIRECTORY_SEPARATOR . self::CHUNK_BLOCKS_DIRECTORY;
-    }
-
-    /**
-     * @param string $uploadId
-     * @param int $offset
-     * @return string
-     */
-    private function getChunkBlockMarkerPath($uploadId, $offset)
-    {
-        return $this->getChunkBlocksPath($uploadId) . DIRECTORY_SEPARATOR . $offset . '.json';
     }
 
     /**
@@ -1023,5 +1010,84 @@ class FilepondController extends BaseController
     private function getAzureOssBlockId($offset)
     {
         return base64_encode(str_pad((string) $offset, 20, '0', STR_PAD_LEFT));
+    }
+
+    /**
+     * @param string $blockId
+     * @return int
+     */
+    private function getAzureOssOffsetFromBlockId($blockId)
+    {
+        $decodedBlockId = base64_decode($blockId, true);
+
+        if ($decodedBlockId === false || !ctype_digit($decodedBlockId)) {
+            abort(500, 'Invalid block blob upload state');
+        }
+
+        return (int) ltrim($decodedBlockId, '0');
+    }
+
+    /**
+     * @param mixed $adapter
+     * @param string $className
+     * @return object|null
+     */
+    private function findStorageAdapterByClass($adapter, $className)
+    {
+        if (!class_exists($className) || !is_object($adapter)) {
+            return null;
+        }
+
+        return $this->findObjectByClass($adapter, $className, []);
+    }
+
+    /**
+     * @param mixed $value
+     * @param string $className
+     * @param array<int, true> $visitedObjectIds
+     * @return object|null
+     */
+    private function findObjectByClass($value, $className, array $visitedObjectIds)
+    {
+        if (!is_object($value)) {
+            return null;
+        }
+
+        if (is_a($value, $className)) {
+            return $value;
+        }
+
+        $objectId = spl_object_hash($value);
+        if (isset($visitedObjectIds[$objectId])) {
+            return null;
+        }
+
+        $visitedObjectIds[$objectId] = true;
+
+        try {
+            $reflection = new \ReflectionClass($value);
+
+            while ($reflection instanceof \ReflectionClass) {
+                foreach ($reflection->getProperties() as $reflectionProperty) {
+                    $reflectionProperty->setAccessible(true);
+                    $propertyValue = $reflectionProperty->getValue($value);
+
+                    if (!is_object($propertyValue)) {
+                        continue;
+                    }
+
+                    $matchingObject = $this->findObjectByClass($propertyValue, $className, $visitedObjectIds);
+                    if ($matchingObject !== null) {
+                        return $matchingObject;
+                    }
+                }
+
+                $reflection = $reflection->getParentClass();
+            }
+        } catch (\Exception $e) {
+            return null;
+        }
+
+        return null;
     }
 }

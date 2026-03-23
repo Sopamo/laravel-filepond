@@ -49,6 +49,22 @@ class TestCase extends \Orchestra\Testbench\TestCase
             );
         });
 
+        Storage::extend('fake-wrapped-azure-oss', function ($app, array $config) use ($testCase) {
+            $baseRoot = $config['test_root'];
+            $prefix = isset($config['prefix']) ? $config['prefix'] : (isset($config['root']) ? $config['root'] : '');
+            $localRoot = $testCase->makePrefixedRoot($baseRoot, $prefix);
+            $container = isset($config['container']) ? $config['container'] : 'test-container';
+            $containerClient = new \AzureOss\Storage\Blob\BlobContainerClient($baseRoot, $container);
+            $innerAdapter = new \AzureOss\Storage\BlobFlysystem\AzureBlobStorageAdapter($localRoot, $containerClient);
+            $wrappedAdapter = new \AzureOss\Storage\BlobFlysystem\WrappedAzureOssAdapter($innerAdapter);
+
+            return new LaravelFilesystemAdapter(
+                new Filesystem($wrappedAdapter, $config),
+                $wrappedAdapter,
+                $config
+            );
+        });
+
         Storage::extend('fake-legacy-azure', function ($app, array $config) use ($testCase) {
             $baseRoot = $config['test_root'];
             $prefix = isset($config['prefix']) ? $config['prefix'] : '';

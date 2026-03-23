@@ -86,18 +86,50 @@ class ChunkUploadTest extends TestCase
         $filePath = app(Filepond::class)->getPathFromServerId($serverId);
         $uploadId = basename($filePath);
         $chunkBasePath = config('filepond.chunks_path') . DIRECTORY_SEPARATOR . $uploadId;
-        $blockMarkerPath = $chunkBasePath . DIRECTORY_SEPARATOR . 'blocks' . DIRECTORY_SEPARATOR . '0.json';
+        $sessionPath = $chunkBasePath . DIRECTORY_SEPARATOR . 'upload.json';
         $patchPath = $chunkBasePath . DIRECTORY_SEPARATOR . 'patch.0';
 
         $this->patchChunk($serverId, 'Hello ', 0, strlen($content))->assertStatus(204);
 
         $storage = Storage::disk($diskName);
-        $this->assertTrue($storage->exists($blockMarkerPath));
+        $this->assertTrue($storage->exists($sessionPath));
         $this->assertFalse($storage->exists($patchPath));
+        $this->assertFalse($storage->exists($chunkBasePath . DIRECTORY_SEPARATOR . 'blocks' . DIRECTORY_SEPARATOR . '0.json'));
 
         $this->patchChunk($serverId, 'Hello ', 0, strlen($content))->assertStatus(204);
         $this->patchChunk($serverId, 'Azure', 6, strlen($content))->assertStatus(204);
 
+        $this->assertSame($content, $storage->get($filePath));
+        $this->assertFalse($storage->exists($chunkBasePath));
+    }
+
+    /** @test */
+    public function test_wrapped_azure_oss_chunk_upload_uses_the_native_strategy()
+    {
+        $diskName = 'wrapped_azure_oss';
+        $content = 'Wrapped Azure';
+        $baseRoot = $this->makeDiskRoot('wrapped-azure-oss');
+
+        config()->set('filesystems.disks.' . $diskName, [
+            'driver' => 'fake-wrapped-azure-oss',
+            'test_root' => $baseRoot,
+            'container' => 'test-container',
+            'prefix' => 'tenant-b',
+        ]);
+        config()->set('filepond.temporary_files_disk', $diskName);
+
+        $response = $this->initChunkUpload('wrapped-azure-oss.txt');
+        $response->assertStatus(200);
+
+        $serverId = $response->getContent();
+        $filePath = app(Filepond::class)->getPathFromServerId($serverId);
+        $uploadId = basename($filePath);
+        $chunkBasePath = config('filepond.chunks_path') . DIRECTORY_SEPARATOR . $uploadId;
+
+        $this->patchChunk($serverId, 'Wrapped ', 0, strlen($content))->assertStatus(204);
+        $this->patchChunk($serverId, 'Azure', 8, strlen($content))->assertStatus(204);
+
+        $storage = Storage::disk($diskName);
         $this->assertSame($content, $storage->get($filePath));
         $this->assertFalse($storage->exists($chunkBasePath));
     }
