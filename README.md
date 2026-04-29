@@ -1,5 +1,3 @@
-
-
 <h1 align="center">
   Laravel FilePond Backend
 </h1>
@@ -25,7 +23,6 @@ If you need to edit the configuration, you can publish it with:
 php artisan vendor:publish --provider="Sopamo\LaravelFilepond\LaravelFilepondServiceProvider"
 ```
 
-
 ```php
 // Get the temporary path using the serverId returned by the upload function in `FilepondController.php`
 $filepond = app(\Sopamo\LaravelFilepond\Filepond::class);
@@ -46,6 +43,10 @@ You can use any [Laravel disk](https://laravel.com/docs/7.x/filesystem) as the s
 
 If you are using the default `local` disk, make sure the /storage/app/filepond directory exists in your project and is writable.
 
+If you are using the legacy `matthewbdaly/laravel-azure-storage` driver with chunked uploads, we use Azure append blobs for faster performance.
+
+If you are using `azure-oss/storage-blob-laravel` / `azure-oss/storage-blob-flysystem`, chunked uploads use native Azure block-blob staging and commit.
+
 ### Filepond client setup
 
 This is the minimum Filepond JS configuration you need to set after installing laravel-filepond.
@@ -53,7 +54,7 @@ This is the minimum Filepond JS configuration you need to set after installing l
 ```javascript
 FilePond.setOptions({
   server: {
-    url: '/filepond/api',
+    url: "/filepond/api",
     process: {
       url: "/process",
       headers: (file: File) => {
@@ -61,21 +62,36 @@ FilePond.setOptions({
         return {
           "Upload-Name": file.name,
           "X-CSRF-TOKEN": "{{ csrf_token() }}",
-        }
+        };
       },
     },
-    revert: '/process',
+    processChunks: {
+      url: "/process",
+      headers: (file: File) => {
+        // Send the original file name which will be used for chunked uploads
+        // For chunked uploads, send the content type as well
+        return {
+          "Upload-Name": file.name,
+          "X-CSRF-TOKEN": "{{ csrf_token() }}",
+          "Content-Type": file.type,
+        };
+      },
+    },
+    revert: "/process",
     patch: "?patch=",
     headers: {
-      'X-CSRF-TOKEN': '{{ csrf_token() }}'
-    }
-  }
+      "X-CSRF-TOKEN": "{{ csrf_token() }}",
+    },
+  },
 });
 ```
 
 ## Package development
+
 Please make sure all tests run successfully before submitting a PR.
+
 ### Testing
- - Start a docker container to execute the tests in with ` docker run -it -v $PWD:/app composer /bin/bash`
- - Run `composer install`
- - Run `./vendor/bin/phpunit`
+
+- Start a docker container to execute the tests in with ` docker run -it -v $PWD:/app composer /bin/bash`
+- Run `composer install`
+- Run `./vendor/bin/phpunit`
