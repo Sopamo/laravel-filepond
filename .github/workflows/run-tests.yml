@@ -59,7 +59,7 @@ jobs:
           composer update --${{ matrix.dependency-version }} --prefer-dist --no-interaction
 
       - name: Adjust PHPUnit config for PHPUnit 10
-        if: startsWith(matrix.laravel, '10.')
+        if: startsWith(matrix.laravel, '10.') || (startsWith(matrix.laravel, '11.') && matrix.dependency-version == 'prefer-lowest')
         run: sed -i 's/ ignoreIndirectDeprecations="true"//' phpunit.xml
 
       - name: Execute tests
