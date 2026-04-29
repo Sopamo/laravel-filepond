@@ -200,7 +200,12 @@ class FilepondController extends BaseController
      */
     public function delete(Request $request)
     {
-        $filePath = $this->filepond->getPathFromServerId($request->getContent());
+        try {
+            $filePath = $this->filepond->getPathFromServerId($request->getContent());
+        } catch (DecryptException $e) {
+            abort(400, 'Invalid encryption for id');
+        }
+
         $folderPath = dirname($filePath);
         if (Storage::disk(config('filepond.temporary_files_disk', 'local'))->deleteDirectory($folderPath)) {
             return Response::make('', 200, [
@@ -213,4 +218,3 @@ class FilepondController extends BaseController
         ]);
     }
 }
-
