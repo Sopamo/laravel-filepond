@@ -3,5 +3,6 @@ composer.phar
 composer.lock
 .DS_Store
 .idea
+.codex
 .phpunit.result.cache
 .phpunit.cache
