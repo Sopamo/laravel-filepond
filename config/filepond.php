@@ -3,10 +3,22 @@
 return [
     /*
     |--------------------------------------------------------------------------
+    | Package routes
+    |--------------------------------------------------------------------------
+    |
+    | Routes remain enabled by default for compatibility with version 2. Set
+    | this to false when the host application registers the controller itself.
+    |
+    */
+    'routes_enabled' => env('FILEPOND_ROUTES_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | API middleware
     |--------------------------------------------------------------------------
     |
-    | The middleware to append to the filepond API routes
+    | The middleware to append to the filepond API routes. Add authentication,
+    | authorization, and rate limiting before enabling the routes.
     |
     */
     'middleware' => 'api',
@@ -43,7 +55,13 @@ return [
     | Chunks use the same disk as the temporary files do.
     |
     */
-    'chunks_path' => env('FILEPOND_CHUNKS_PATH', 'filepond' . DIRECTORY_SEPARATOR . 'chunks'),
+    'chunks_path' => env('FILEPOND_CHUNKS_PATH', 'filepond/chunks'),
 
     'input_name' => 'file',
+
+    'maximum_upload_size' => env('FILEPOND_MAXIMUM_UPLOAD_SIZE', PHP_INT_MAX),
+    'maximum_chunk_size' => env('FILEPOND_MAXIMUM_CHUNK_SIZE', PHP_INT_MAX),
+    'lock_store' => env('FILEPOND_LOCK_STORE'),
+    'lock_seconds' => env('FILEPOND_LOCK_SECONDS', 900),
+    'lock_wait_seconds' => env('FILEPOND_LOCK_WAIT_SECONDS', 5),
 ];
