@@ -47,12 +47,24 @@ final class ChunkAssembler
         $this->assertUploadLength($length);
         $contentLength = strlen($content);
 
-        if ($offset < 0 || $contentLength === 0 || $contentLength > (int) config('filepond.maximum_chunk_size')) {
-            throw new UploadException('The chunk size or offset is invalid.', 422);
+        if ($offset < 0) {
+            throw new UploadException('The chunk offset cannot be negative.', 422);
         }
 
-        if ($offset > $length || $contentLength > $length - $offset) {
-            throw new UploadException('The chunk exceeds the declared upload length.', 422);
+        if ($contentLength === 0) {
+            throw new UploadException('The chunk cannot be empty.', 422);
+        }
+
+        if ($contentLength > (int) config('filepond.maximum_chunk_size')) {
+            throw new UploadException('The chunk exceeds the configured maximum chunk size.', 422);
+        }
+
+        if ($offset > $length) {
+            throw new UploadException('The chunk offset exceeds the declared upload length.', 422);
+        }
+
+        if ($contentLength > $length - $offset) {
+            throw new UploadException('The chunk extends beyond the declared upload length.', 422);
         }
 
         return $this->withUploadLock(

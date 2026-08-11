@@ -20,6 +20,9 @@ class FilepondController extends Controller
     {
         return $this->respond(function () use ($request): Response {
             $file = $request->uploadedFile();
+
+            // FilePond uses the process endpoint for both regular uploads and
+            // chunk initialization, where no UploadedFile is included.
             $serverId = $file === null
                 ? $this->filepond->initializeChunkUpload($request->uploadName(), $request->uploadLength())
                 : $this->filepond->store($file);
