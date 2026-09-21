@@ -20,12 +20,12 @@ class TemporaryUploadService
 
     public function storeUploadedFile(UploadedFile $file): ?string
     {
-        $originalName = $file->getClientOriginalName();
-        $targetPath = $this->uploadPathResolver->buildSingleUploadPath($originalName);
-        $directory = dirname($targetPath);
-        $filename = basename($targetPath);
-        $disk = Config::string('filepond.temporary_files_disk');
-        $storedFile = $file->storeAs($directory, $filename, $disk);
+        $targetPath = $this->uploadPathResolver->buildSingleUploadPath($file->getClientOriginalName());
+        $storedFile = $file->storeAs(
+            dirname($targetPath),
+            basename($targetPath),
+            Config::string('filepond.temporary_files_disk')
+        );
 
         if (!$storedFile) {
             return null;
@@ -54,8 +54,7 @@ class TemporaryUploadService
         // A process header callback may supply the file MIME type. The usual
         // multipart metadata request's type is not the uploaded file's type.
         $mediaType = explode(';', $contentType, 2)[0];
-        $mediaType = trim($mediaType);
-        $mediaType = strtolower($mediaType);
+        $mediaType = strtolower(trim($mediaType));
         if ($mediaType === '' || str_starts_with($mediaType, 'multipart/')
             || $mediaType === 'application/x-www-form-urlencoded') {
             return;
@@ -68,8 +67,7 @@ class TemporaryUploadService
 
         $manifestPath = $this->uploadPathResolver->azureManifestPath($filePath);
         $manifest = AzureChunkManifest::empty($mediaType);
-        $manifestJson = $manifest->toJson();
-        if (!$storage->put($manifestPath, $manifestJson)) {
+        if (!$storage->put($manifestPath, $manifest->toJson())) {
             throw new \RuntimeException('Could not persist the Azure upload content type.');
         }
     }
@@ -86,8 +84,7 @@ class TemporaryUploadService
         $chunkDirectoryDeleted = $this->deleteDirectoryIfItExists($storage, $chunkDirectory);
 
         $directory = dirname($filePath);
-        $temporaryRoot = Config::string('filepond.temporary_files_path');
-        $temporaryRoot = rtrim($temporaryRoot, '/');
+        $temporaryRoot = rtrim(Config::string('filepond.temporary_files_path'), '/');
         if ($fileDeleted && $directory !== $temporaryRoot && $storage->allFiles($directory) === []) {
             $storage->deleteDirectory($directory);
         }
@@ -106,8 +103,7 @@ class TemporaryUploadService
 
     private function temporaryStorage(): FilesystemAdapter
     {
-        $disk = Config::string('filepond.temporary_files_disk');
-        $storage = $this->storageManager->disk($disk);
+        $storage = $this->storageManager->disk(Config::string('filepond.temporary_files_disk'));
         if (!$storage instanceof FilesystemAdapter) {
             throw new \RuntimeException('Could not resolve the temporary upload storage.');
         }

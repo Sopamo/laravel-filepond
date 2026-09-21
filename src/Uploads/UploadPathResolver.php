@@ -9,8 +9,7 @@ class UploadPathResolver
 {
     public function buildSingleUploadPath(string $originalName): string
     {
-        $root = Config::string('filepond.temporary_files_path');
-        $root = rtrim($root, '/\\');
+        $root = rtrim(Config::string('filepond.temporary_files_path'), '/\\');
         $uploadDirectory = Str::random();
 
         return $root.DIRECTORY_SEPARATOR.$uploadDirectory
@@ -25,8 +24,7 @@ class UploadPathResolver
         $uploadDirectory = Str::random();
         $normalizedUploadName = $this->normalizeUploadName($uploadName);
         $filename = $normalizedUploadName === '' ? $uploadDirectory : basename($normalizedUploadName);
-        $root = Config::string('filepond.temporary_files_path');
-        $root = rtrim($root, '/\\');
+        $root = rtrim(Config::string('filepond.temporary_files_path'), '/\\');
 
         return $root.DIRECTORY_SEPARATOR.$uploadDirectory.DIRECTORY_SEPARATOR.$filename;
     }

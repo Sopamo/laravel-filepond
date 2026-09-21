@@ -28,13 +28,13 @@ class FilepondController extends BaseController
      */
     public function upload(Request $request): Response
     {
-        $inputName = Config::string('filepond.input_name');
-        $input = $request->file($inputName);
+        $input = $request->file(Config::string('filepond.input_name'));
 
         if ($input === null) {
-            $uploadName = $request->header('Upload-Name');
-            $contentType = $request->headers->get('Content-Type');
-            $serverId = $this->temporaryUploadService->initializeChunkUpload($uploadName, $contentType);
+            $serverId = $this->temporaryUploadService->initializeChunkUpload(
+                $request->header('Upload-Name'),
+                $request->headers->get('Content-Type')
+            );
 
             return $this->plainTextResponse($serverId, 200);
         }
@@ -61,8 +61,7 @@ class FilepondController extends BaseController
             throw new BadRequestHttpException($exception->getMessage(), $exception);
         }
 
-        $content = $request->getContent();
-        $this->chunkUploadService->store($chunk, $content);
+        $this->chunkUploadService->store($chunk, $request->getContent());
 
         return $this->plainTextResponse('', 204);
     }
@@ -73,9 +72,8 @@ class FilepondController extends BaseController
      */
     public function delete(Request $request): Response
     {
-        $serverId = $request->getContent();
         try {
-            $deleted = $this->temporaryUploadService->deleteByServerId($serverId);
+            $deleted = $this->temporaryUploadService->deleteByServerId($request->getContent());
         } catch (InvalidUploadRequestException $exception) {
             throw new BadRequestHttpException($exception->getMessage(), $exception);
         }

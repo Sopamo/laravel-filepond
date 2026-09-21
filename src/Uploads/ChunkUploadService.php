@@ -22,8 +22,7 @@ class ChunkUploadService
             return;
         }
 
-        $disk = Config::string('filepond.temporary_files_disk');
-        $storage = $this->storageManager->disk($disk);
+        $storage = $this->storageManager->disk(Config::string('filepond.temporary_files_disk'));
         if (!$storage instanceof FilesystemAdapter) {
             throw new \RuntimeException('Could not resolve the temporary upload storage.');
         }

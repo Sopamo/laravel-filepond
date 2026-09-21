@@ -37,8 +37,7 @@ class ServerIdCodec
 
     private function validatePath(string $filePath): void
     {
-        $configuredRoot = Config::string('filepond.temporary_files_path');
-        $root = str_replace('\\', '/', $configuredRoot);
+        $root = str_replace('\\', '/', Config::string('filepond.temporary_files_path'));
         $root = rtrim($root, '/');
         $pathToValidate = str_replace('\\', '/', $filePath);
 

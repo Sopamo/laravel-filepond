@@ -24,8 +24,7 @@ final class AzureBlockBlobChunkWriteHandler implements ChunkWriteHandler
         $blockId = $this->buildBlockId($offset);
 
         $manifestPath = $this->uploadPathResolver->azureManifestPath($filePath);
-        $manifest = $this->loadManifest($manifestPath);
-        $manifest = $manifest->withUploadLength($uploadLength);
+        $manifest = $this->loadManifest($manifestPath)->withUploadLength($uploadLength);
 
         if (!$chunkUploadRequest->isEmptyUpload($content)) {
             $blockBlobClient->stageBlock($blockId, $content);
@@ -33,8 +32,7 @@ final class AzureBlockBlobChunkWriteHandler implements ChunkWriteHandler
             $manifest = $manifest->withChunk($part);
         }
 
-        $manifestJson = $manifest->toJson();
-        if ($this->storage->put($manifestPath, $manifestJson) === false) {
+        if ($this->storage->put($manifestPath, $manifest->toJson()) === false) {
             throw new \RuntimeException('Could not persist the Azure block blob chunk upload manifest.');
         }
 
@@ -44,10 +42,10 @@ final class AzureBlockBlobChunkWriteHandler implements ChunkWriteHandler
         }
 
         $contentType = $manifest->contentType() ?? 'application/octet-stream';
-        $headers = new BlobHttpHeaders(contentType: $contentType);
-        $options = new CommitBlockListOptions($headers);
-        $blockIds = $chunkCollection->orderedReferences();
-        $blockBlobClient->commitBlockList($blockIds, $options);
+        $options = new CommitBlockListOptions(
+            new BlobHttpHeaders(contentType: $contentType)
+        );
+        $blockBlobClient->commitBlockList($chunkCollection->orderedReferences(), $options);
 
         $chunkDirectory = $this->uploadPathResolver->chunkStoragePath($filePath);
         $this->storage->deleteDirectory($chunkDirectory);
