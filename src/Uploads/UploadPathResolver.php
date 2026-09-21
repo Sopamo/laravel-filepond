@@ -6,13 +6,9 @@ use Illuminate\Support\Str;
 
 class UploadPathResolver
 {
-    public function __construct(private readonly FilepondConfiguration $configuration)
-    {
-    }
-
     public function buildSingleUploadPath(string $originalName): string
     {
-        return $this->configuration->temporaryFilesPath()
+        return rtrim((string) config('filepond.temporary_files_path', 'filepond'), '/\\')
             .DIRECTORY_SEPARATOR.Str::random()
             .DIRECTORY_SEPARATOR.$originalName;
     }
@@ -25,20 +21,15 @@ class UploadPathResolver
         $uploadDirectory = Str::random();
         $normalizedUploadName = $this->normalizeUploadName($uploadName);
 
-        if ($normalizedUploadName === '') {
-            return $this->configuration->temporaryFilesPath()
-                .DIRECTORY_SEPARATOR.$uploadDirectory
-                .DIRECTORY_SEPARATOR.$uploadDirectory;
-        }
-
-        return $this->configuration->temporaryFilesPath()
+        return rtrim((string) config('filepond.temporary_files_path', 'filepond'), '/\\')
             .DIRECTORY_SEPARATOR.$uploadDirectory
-            .DIRECTORY_SEPARATOR.basename($normalizedUploadName);
+            .DIRECTORY_SEPARATOR.($normalizedUploadName === '' ? $uploadDirectory : basename($normalizedUploadName));
     }
 
     public function chunkStoragePath(string $finalFilePath): string
     {
-        return $this->configuration->chunksPath().DIRECTORY_SEPARATOR.sha1($finalFilePath);
+        return (string) config('filepond.chunks_path', 'filepond'.DIRECTORY_SEPARATOR.'chunks')
+            .DIRECTORY_SEPARATOR.sha1($finalFilePath);
     }
 
     public function azureManifestPath(string $finalFilePath): string

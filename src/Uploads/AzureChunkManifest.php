@@ -9,13 +9,14 @@ final class AzureChunkManifest
      */
     private function __construct(
         private int $uploadLength,
-        private array $partsByOffset
+        private array $partsByOffset,
+        private readonly ?string $contentType = null
     ) {
     }
 
-    public static function empty(): self
+    public static function empty(?string $contentType = null): self
     {
-        return new self(0, []);
+        return new self(0, [], $contentType);
     }
 
     public static function fromJson(string $json): self
@@ -32,7 +33,11 @@ final class AzureChunkManifest
             throw new \RuntimeException('Invalid Azure block blob chunk upload manifest.');
         }
 
-        $manifest = new self($uploadLength, []);
+        $contentType = $decoded['content_type'] ?? null;
+        if ($contentType !== null && !is_string($contentType)) {
+            throw new \RuntimeException('Invalid Azure block blob content type.');
+        }
+        $manifest = new self($uploadLength, [], $contentType);
 
         foreach ($chunks as $chunk) {
             if (!is_array($chunk)) {
@@ -78,6 +83,11 @@ final class AzureChunkManifest
         return $this->uploadLength;
     }
 
+    public function contentType(): ?string
+    {
+        return $this->contentType;
+    }
+
     /**
      * @return array<int, ChunkPart>
      */
@@ -104,6 +114,9 @@ final class AzureChunkManifest
                 $this->parts()
             ),
         ];
+        if ($this->contentType !== null) {
+            $payload['content_type'] = $this->contentType;
+        }
 
         $json = json_encode($payload);
         if (!is_string($json)) {

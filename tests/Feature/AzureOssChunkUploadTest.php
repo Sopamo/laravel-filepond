@@ -1,397 +1,122 @@
 <?php
 
-namespace AzureOss\Storage\BlobFlysystem {
-    class AzureBlobStorageAdapter
+namespace Sopamo\LaravelFilepond\Tests\Feature;
+
+use Illuminate\Support\Facades\Crypt;
+use Sopamo\LaravelFilepond\Filepond;
+use Sopamo\LaravelFilepond\Tests\AzureTestCase;
+
+class AzureOssChunkUploadTest extends AzureTestCase
+{
+    public function test_real_sdk_stages_and_commits_out_of_order_blocks_with_the_storage_prefix(): void
     {
-        /**
-         * @var mixed
-         */
-        public $containerClient;
+        $response = $this->post('/filepond/api/process', [], ['Upload-Name' => 'Safety+Association (1).pdf'])->assertOk();
+        $id = $response->getContent();
+        $path = app(Filepond::class)->getPathFromServerId($id);
 
-        /**
-         * @var mixed
-         */
-        public $prefixer;
+        $this->sendChunk($id, 'world', 6, 11)->assertNoContent();
+        $this->assertFalse($this->storage->exists($path));
+        $this->sendChunk($id, 'hello ', 0, 11)->assertNoContent();
 
-        /**
-         * @param mixed $containerClient
-         * @param mixed $prefixer
-         */
-        public function __construct($containerClient, $prefixer)
-        {
-            $this->containerClient = $containerClient;
-            $this->prefixer = $prefixer;
-        }
-    }
-}
-
-namespace Sopamo\LaravelFilepond\Tests\Feature {
-    use AzureOss\Storage\BlobFlysystem\AzureBlobStorageAdapter;
-    use Illuminate\Filesystem\FilesystemAdapter as LaravelFilesystemAdapter;
-    use Illuminate\Support\Facades\Storage;
-    use League\Flysystem\Config;
-    use League\Flysystem\FileAttributes;
-    use League\Flysystem\Filesystem;
-    use League\Flysystem\FilesystemAdapter;
-    use League\Flysystem\Local\LocalFilesystemAdapter;
-    use League\Flysystem\PathPrefixer;
-    use Sopamo\LaravelFilepond\Filepond;
-    use Sopamo\LaravelFilepond\Tests\TestCase;
-    use Sopamo\LaravelFilepond\Uploads\AzureBlockBlobClient;
-    use Sopamo\LaravelFilepond\Uploads\AzureBlockBlobContainerClient;
-
-    class AzureOssChunkUploadTest extends TestCase
-    {
-        /** @test */
-        public function test_wrapped_azure_oss_chunk_upload_stages_blocks_and_commits_them_without_patch_files()
-        {
-            $temporaryStorageRoot = $this->createTemporaryDirectory('laravel-filepond-azure-oss');
-            $blobPrefix = 'azure-prefix';
-            $prefixedStorageRoot = $temporaryStorageRoot.DIRECTORY_SEPARATOR.$blobPrefix;
-            $containerClient = new FakeAzureOssContainerClient($temporaryStorageRoot);
-            $diskName = $this->registerWrappedAzureOssDisk($containerClient, $prefixedStorageRoot, $blobPrefix);
-
-            config([
-                'filepond.temporary_files_disk' => $diskName,
-            ]);
-
-            $serverId = $this->initializeChunkUpload('archive.wbt', 11);
-
-            /** @var Filepond $filepond */
-            $filepond = app(Filepond::class);
-            $finalFilePath = $filepond->getPathFromServerId($serverId);
-            $chunkStoragePath = $this->buildChunkStoragePath($finalFilePath);
-            $prefixedBlobPath = $blobPrefix.'/'.$finalFilePath;
-
-            $this->sendChunk($serverId, 'hello ', 0, 11)->assertStatus(204);
-            $this->sendChunk($serverId, 'world', 6, 11)->assertStatus(204);
-
-            $blockBlobClient = $containerClient->getExistingBlockBlobClient($prefixedBlobPath);
-
-            $this->assertNotNull($blockBlobClient);
-            $this->assertCount(2, $blockBlobClient->stagedBlocks);
-            $this->assertSame(
-                [
-                    $this->buildAzureOssBlockId(0),
-                    $this->buildAzureOssBlockId(6),
-                ],
-                $blockBlobClient->committedBlockLists[0]
-            );
-            $this->assertSame('hello world', Storage::disk($diskName)->get($finalFilePath));
-            $this->assertFileDoesNotExist($prefixedStorageRoot.DIRECTORY_SEPARATOR.$chunkStoragePath.DIRECTORY_SEPARATOR.'patch.0');
-            $this->assertFileDoesNotExist($prefixedStorageRoot.DIRECTORY_SEPARATOR.$chunkStoragePath.DIRECTORY_SEPARATOR.'manifest.json');
-        }
-
-        /** @test */
-        public function test_wrapped_azure_oss_chunk_upload_commits_blocks_in_offset_order()
-        {
-            $temporaryStorageRoot = $this->createTemporaryDirectory('laravel-filepond-azure-oss');
-            $blobPrefix = 'azure-prefix';
-            $prefixedStorageRoot = $temporaryStorageRoot.DIRECTORY_SEPARATOR.$blobPrefix;
-            $containerClient = new FakeAzureOssContainerClient($temporaryStorageRoot);
-            $diskName = $this->registerWrappedAzureOssDisk($containerClient, $prefixedStorageRoot, $blobPrefix);
-
-            config([
-                'filepond.temporary_files_disk' => $diskName,
-            ]);
-
-            $serverId = $this->initializeChunkUpload('archive.wbt', 11);
-
-            /** @var Filepond $filepond */
-            $filepond = app(Filepond::class);
-            $finalFilePath = $filepond->getPathFromServerId($serverId);
-            $prefixedBlobPath = $blobPrefix.'/'.$finalFilePath;
-
-            $this->sendChunk($serverId, 'world', 6, 11)->assertStatus(204);
-            $this->sendChunk($serverId, 'hello ', 0, 11)->assertStatus(204);
-
-            $blockBlobClient = $containerClient->getExistingBlockBlobClient($prefixedBlobPath);
-
-            $this->assertNotNull($blockBlobClient);
-            $this->assertSame(
-                [
-                    $this->buildAzureOssBlockId(0),
-                    $this->buildAzureOssBlockId(6),
-                ],
-                $blockBlobClient->committedBlockLists[0]
-            );
-            $this->assertSame('hello world', Storage::disk($diskName)->get($finalFilePath));
-        }
-
-        private function registerWrappedAzureOssDisk(
-            FakeAzureOssContainerClient $containerClient,
-            string $prefixedStorageRoot,
-            string $blobPrefix
-        ): string {
-            $driverName = 'wrapped-azure-oss-driver-'.uniqid('', true);
-            $diskName = 'wrapped-azure-oss-disk-'.uniqid('', true);
-
-            Storage::extend($driverName, function () use ($containerClient, $prefixedStorageRoot, $blobPrefix) {
-                if (!is_dir($prefixedStorageRoot) && !mkdir($prefixedStorageRoot, 0777, true) && !is_dir($prefixedStorageRoot)) {
-                    throw new \RuntimeException('Could not create a local root for the wrapped AzureOss disk test.');
-                }
-
-                $localAdapter = new LocalFilesystemAdapter($prefixedStorageRoot);
-                $wrappedAdapter = new WrappedAzureOssAdapterStub(
-                    $localAdapter,
-                    new AzureBlobStorageAdapter($containerClient, new PathPrefixer($blobPrefix))
-                );
-                $filesystem = new Filesystem($localAdapter);
-
-                return new LaravelFilesystemAdapter($filesystem, $wrappedAdapter, [
-                    'root' => $prefixedStorageRoot,
-                ]);
-            });
-
-            config([
-                'filesystems.disks.'.$diskName => [
-                    'driver' => $driverName,
-                    'root' => $prefixedStorageRoot,
-                ],
-            ]);
-
-            return $diskName;
-        }
-
-        private function initializeChunkUpload(string $uploadName, int $uploadLength): string
-        {
-            $response = $this->call(
-                'POST',
-                '/filepond/api/process',
-                [],
-                [],
-                [],
-                [
-                    'HTTP_UPLOAD_LENGTH' => (string) $uploadLength,
-                    'HTTP_UPLOAD_NAME' => $uploadName,
-                ]
-            );
-
-            $response->assertStatus(200);
-
-            return $response->content();
-        }
-
-        private function sendChunk(string $serverId, string $chunkContent, int $offset, int $uploadLength)
-        {
-            return $this->call(
-                'PATCH',
-                '/filepond/api',
-                ['patch' => $serverId],
-                [],
-                [],
-                [
-                    'CONTENT_TYPE' => 'application/offset+octet-stream',
-                    'HTTP_UPLOAD_OFFSET' => (string) $offset,
-                    'HTTP_UPLOAD_LENGTH' => (string) $uploadLength,
-                ],
-                $chunkContent
-            );
-        }
-
-        private function buildAzureOssBlockId(int $offset): string
-        {
-            return base64_encode(str_pad((string) $offset, 20, '0', STR_PAD_LEFT));
-        }
-
-        private function buildChunkStoragePath(string $finalFilePath): string
-        {
-            return config('filepond.chunks_path').DIRECTORY_SEPARATOR.sha1($finalFilePath);
-        }
+        $this->assertSame('hello world', $this->storage->get($path));
+        $requests = $this->azureRequests();
+        $this->assertSame(['block', 'block', 'blocklist'], array_column(array_column($requests, 'query'), 'comp'));
+        $this->assertSame(['azure-prefix/'.$path], array_values(array_unique(array_column($requests, 'path'))));
+        $this->assertSame('world', $requests[0]['body']);
+        $this->assertSame('hello ', $requests[1]['body']);
+        $blockIds = array_map('strval', iterator_to_array(simplexml_load_string($requests[2]['body'])->Latest, false));
+        $this->assertSame([$this->blockId(0), $this->blockId(6)], $blockIds);
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
     }
 
-    class WrappedAzureOssAdapterStub implements FilesystemAdapter
+    public function test_existing_v2_manifest_and_block_ids_are_retained_and_retries_restage_content(): void
     {
-        /**
-         * @var FilesystemAdapter
-         */
-        private $delegatedAdapter;
-
-        /**
-         * @var mixed
-         */
-        private $innerAdapter;
-
-        /**
-         * @param mixed $innerAdapter
-         */
-        public function __construct(FilesystemAdapter $delegatedAdapter, $innerAdapter)
-        {
-            $this->delegatedAdapter = $delegatedAdapter;
-            $this->innerAdapter = $innerAdapter;
-        }
-
-        public function fileExists(string $path): bool
-        {
-            return $this->delegatedAdapter->fileExists($path);
-        }
-
-        public function directoryExists(string $path): bool
-        {
-            return $this->delegatedAdapter->directoryExists($path);
-        }
-
-        public function write(string $path, string $contents, Config $config): void
-        {
-            $this->delegatedAdapter->write($path, $contents, $config);
-        }
-
-        public function writeStream(string $path, $contents, Config $config): void
-        {
-            $this->delegatedAdapter->writeStream($path, $contents, $config);
-        }
-
-        public function read(string $path): string
-        {
-            return $this->delegatedAdapter->read($path);
-        }
-
-        public function readStream(string $path)
-        {
-            return $this->delegatedAdapter->readStream($path);
-        }
-
-        public function delete(string $path): void
-        {
-            $this->delegatedAdapter->delete($path);
-        }
-
-        public function deleteDirectory(string $path): void
-        {
-            $this->delegatedAdapter->deleteDirectory($path);
-        }
-
-        public function createDirectory(string $path, Config $config): void
-        {
-            $this->delegatedAdapter->createDirectory($path, $config);
-        }
-
-        public function setVisibility(string $path, string $visibility): void
-        {
-            $this->delegatedAdapter->setVisibility($path, $visibility);
-        }
-
-        public function visibility(string $path): FileAttributes
-        {
-            return $this->delegatedAdapter->visibility($path);
-        }
-
-        public function mimeType(string $path): FileAttributes
-        {
-            return $this->delegatedAdapter->mimeType($path);
-        }
-
-        public function lastModified(string $path): FileAttributes
-        {
-            return $this->delegatedAdapter->lastModified($path);
-        }
-
-        public function fileSize(string $path): FileAttributes
-        {
-            return $this->delegatedAdapter->fileSize($path);
-        }
-
-        public function listContents(string $path, bool $deep): iterable
-        {
-            return $this->delegatedAdapter->listContents($path, $deep);
-        }
-
-        public function move(string $source, string $destination, Config $config): void
-        {
-            $this->delegatedAdapter->move($source, $destination, $config);
-        }
-
-        public function copy(string $source, string $destination, Config $config): void
-        {
-            $this->delegatedAdapter->copy($source, $destination, $config);
-        }
+        $path = 'filepond/existing/archive.wbt';
+        $id = Crypt::encryptString($path);
+        $manifestPath = config('filepond.chunks_path').'/'.sha1($path).'/manifest.json';
+        $this->sendChunk($id, 'wrong ', 0, 11)->assertNoContent();
+        $this->storage->put($manifestPath, json_encode([
+            'upload_length' => 11,
+            'chunks' => [['offset' => 0, 'size' => 6, 'block_id' => $this->blockId(0)]],
+        ]));
+        $this->sendChunk($id, 'hello ', 0, 11)->assertNoContent();
+        $this->sendChunk($id, 'world', 6, 11)->assertNoContent();
+        $this->assertSame('hello world', $this->storage->get($path));
+        $this->assertCount(4, $this->azureRequests());
+        $this->assertFalse($this->storage->exists($manifestPath));
     }
 
-    class FakeAzureOssContainerClient implements AzureBlockBlobContainerClient
+    public function test_azure_commit_preserves_the_initial_pdf_content_type(): void
     {
-        /**
-         * @var string
-         */
-        private $storageRoot;
-
-        /**
-         * @var array<string, FakeAzureOssBlockBlobClient>
-         */
-        private $blockBlobClients = [];
-
-        public function __construct(string $storageRoot)
-        {
-            $this->storageRoot = $storageRoot;
-        }
-
-        public function getBlockBlobClient(string $blobPath): AzureBlockBlobClient
-        {
-            if (!isset($this->blockBlobClients[$blobPath])) {
-                $this->blockBlobClients[$blobPath] = new FakeAzureOssBlockBlobClient($this->storageRoot, $blobPath);
-            }
-
-            return $this->blockBlobClients[$blobPath];
-        }
-
-        public function getExistingBlockBlobClient(string $blobPath): ?FakeAzureOssBlockBlobClient
-        {
-            return $this->blockBlobClients[$blobPath] ?? null;
-        }
+        $response = $this->post('/filepond/api/process', ['file' => ['{}']], [
+            'Upload-Name' => 'manual.pdf', 'Content-Type' => 'application/pdf',
+        ])->assertOk();
+        $id = $response->getContent();
+        $this->sendChunk($id, '%PDF', 0, 4)->assertNoContent();
+        $requests = $this->azureRequests();
+        $headers = array_change_key_case($requests[1]['headers']);
+        $this->assertSame('application/pdf', $headers['x-ms-blob-content-type'] ?? null);
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
     }
 
-    class FakeAzureOssBlockBlobClient implements AzureBlockBlobClient
+    public function test_zero_byte_azure_upload_commits_an_empty_blob_without_staging_a_block(): void
     {
-        /**
-         * @var string
-         */
-        private $storageRoot;
+        $path = 'filepond/empty/example.txt';
+        $this->sendChunk(Crypt::encryptString($path), '', 0, 0)->assertNoContent();
+        $this->assertTrue($this->storage->exists($path));
+        $this->assertSame('', $this->storage->get($path));
+        $this->assertSame(['blocklist'], array_column(array_column($this->azureRequests(), 'query'), 'comp'));
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
+    }
 
-        /**
-         * @var string
-         */
-        private $blobPath;
+    public function test_terminal_empty_azure_patch_does_not_stage_an_orphan_block_or_manifest(): void
+    {
+        $id = Crypt::encryptString('filepond/exact/example.txt');
+        $this->sendChunk($id, 'abcd', 0, 4)->assertNoContent();
+        $this->sendChunk($id, '', 4, 4)->assertNoContent();
+        $this->assertSame('abcd', $this->storage->get('filepond/exact/example.txt'));
+        $this->assertCount(2, $this->azureRequests());
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
+    }
 
-        /**
-         * @var array<string, string>
-         */
-        public $stagedBlocks = [];
+    public function test_a_failed_commit_keeps_the_manifest_so_the_last_chunk_can_be_retried(): void
+    {
+        $path = 'filepond/retry/example.txt';
+        $id = Crypt::encryptString($path);
+        touch($this->azureRoot.'/fail-commit');
+        $this->sendChunk($id, 'abcd', 0, 4)->assertStatus(500);
+        $this->assertTrue($this->storage->exists(config('filepond.chunks_path').'/'.sha1($path).'/manifest.json'));
+        unlink($this->azureRoot.'/fail-commit');
+        $this->sendChunk($id, 'abcd', 0, 4)->assertNoContent();
+        $this->assertSame('abcd', $this->storage->get($path));
+    }
 
-        /**
-         * @var array<int, string[]>
-         */
-        public $committedBlockLists = [];
-
-        public function __construct(string $storageRoot, string $blobPath)
-        {
-            $this->storageRoot = $storageRoot;
-            $this->blobPath = $blobPath;
+    public function test_binary_uploads_stage_each_byte_once_and_use_a_server_side_commit(): void
+    {
+        $path = 'filepond/binary/archive.wbt';
+        $id = Crypt::encryptString($path);
+        $content = random_bytes(2 * 1024 * 1024 + 123);
+        foreach (str_split($content, 1024 * 1024) as $index => $part) {
+            $this->sendChunk($id, $part, $index * 1024 * 1024, strlen($content))->assertNoContent();
         }
+        $requests = $this->azureRequests();
+        $this->assertSame(['block', 'block', 'block', 'blocklist'], array_column(array_column($requests, 'query'), 'comp'));
+        $this->assertSame(strlen($content), array_sum(array_map(fn ($request) => strlen($request['body']), array_slice($requests, 0, 3))));
+        $this->assertSame(hash('sha256', $content), hash('sha256', $this->storage->get($path)));
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
+    }
 
-        public function stageBlock(string $blockId, string $content): void
-        {
-            $this->stagedBlocks[$blockId] = $content;
-        }
+    private function sendChunk(string $id, string $content, int $offset, int $length)
+    {
+        return $this->call('PATCH', '/filepond/api?patch='.$id, [], [], [], [
+            'CONTENT_TYPE' => 'application/offset+octet-stream',
+            'HTTP_UPLOAD_OFFSET' => (string) $offset,
+            'HTTP_UPLOAD_LENGTH' => (string) $length,
+        ], $content);
+    }
 
-        /**
-         * @param string[] $blockIds
-         */
-        public function commitBlockList(array $blockIds): void
-        {
-            $this->committedBlockLists[] = $blockIds;
-
-            $mergedContent = '';
-            foreach ($blockIds as $blockId) {
-                $mergedContent .= $this->stagedBlocks[$blockId];
-            }
-
-            $absoluteBlobPath = $this->storageRoot.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $this->blobPath);
-            $blobDirectory = dirname($absoluteBlobPath);
-
-            if (!is_dir($blobDirectory) && !mkdir($blobDirectory, 0777, true) && !is_dir($blobDirectory)) {
-                throw new \RuntimeException('Could not create the fake AzureOss blob directory.');
-            }
-
-            file_put_contents($absoluteBlobPath, $mergedContent);
-        }
+    private function blockId(int $offset): string
+    {
+        return base64_encode(str_pad((string) $offset, 20, '0', STR_PAD_LEFT));
     }
 }

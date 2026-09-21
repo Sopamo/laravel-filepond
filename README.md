@@ -11,6 +11,8 @@
 
 ### Laravel setup
 
+Requires PHP 8.2 or later and Laravel 12 or 13 (Laravel 13 requires PHP 8.3 or later).
+
 Require this package in the `composer.json` of your Laravel project.
 
 ```bash
@@ -29,21 +31,17 @@ $filepond = app(\Sopamo\LaravelFilepond\Filepond::class);
 $disk = config('filepond.temporary_files_disk');
 
 $path = $filepond->getPathFromServerId($serverId);
-$fullpath = Storage::disk($disk)->get($filePath);
-
-
 // Move the file from the temporary path to the final location
-$finalLocation = public_path('output.jpg');
-\File::move($fullpath, $finalLocation);
+Storage::disk($disk)->move($path, 'uploads/output.jpg');
 ```
 
 #### External storage
 
-You can use any [Laravel disk](https://laravel.com/docs/7.x/filesystem) as the storage for temporary files. If you use a different disk for the temporary files and the final location, you will need to copy the file from the temporary location to the new disk then delete the temporary file yourself.
+You can use any [Laravel disk](https://laravel.com/docs/12.x/filesystem) as the storage for temporary files. If you use a different disk for the temporary files and the final location, you will need to copy the file from the temporary location to the new disk then delete the temporary file yourself.
 
 If you are using the default `local` disk, make sure the /storage/app/filepond directory exists in your project and is writable.
 
-If you are using the Azure Blob Storage driver with chunked uploads, we are using Azure's append only blobs for faster performance.
+For the Azure OSS Blob Storage adapter, chunks are staged as blocks and committed on Azure without downloading and re-uploading the complete file. Other disks use streamed assembly. Azure support is optional; install and configure the Azure OSS disk in your application.
 
 ### Filepond client setup
 
@@ -60,17 +58,7 @@ FilePond.setOptions({
         return {
           "Upload-Name": file.name,
           "X-CSRF-TOKEN": "{{ csrf_token() }}",
-        };
-      },
-    },
-    processChunks: {
-      url: "/process",
-      headers: (file: File) => {
-        // Send the original file name which will be used for chunked uploads
-        // For chunked uploads, send the content type as well
-        return {
-          "Upload-Name": file.name,
-          "X-CSRF-TOKEN": "{{ csrf_token() }}",
+          // Preserve the file MIME type when committing Azure blocks.
           "Content-Type": file.type,
         };
       },
@@ -93,3 +81,4 @@ Please make sure all tests run successfully before submitting a PR.
 - Start a docker container to execute the tests in with ` docker run -it -v $PWD:/app composer /bin/bash`
 - Run `composer install`
 - Run `./vendor/bin/phpunit`
+- Run `composer analyse`
