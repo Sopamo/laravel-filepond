@@ -77,6 +77,17 @@ class UploadCompatibilityTest extends TestCase
         $this->assertSame($path, $filepond->getPathFromServerId(Crypt::encryptString($path)));
     }
 
+    public function test_invalid_configuration_reports_the_setting_instead_of_casting_it(): void
+    {
+        $this->withoutExceptionHandling();
+        config(['filepond.input_name' => false]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('filepond.input_name');
+
+        $this->post('/filepond/api/process');
+    }
+
     public function test_array_file_input_stores_the_first_file_with_its_original_name(): void
     {
         $storage = Storage::fake('local');
@@ -151,11 +162,23 @@ class UploadCompatibilityTest extends TestCase
 
     public static function invalidPaths(): array
     {
-        return [['filepond-other/file.pdf'], ['filepond/../outside.pdf'], ['filepond'], ['filepond/upload/../../outside.pdf'], ['filepond/upload\\..\\outside.pdf']];
+        return [
+            'sibling root' => ['filepond-other/file.pdf'],
+            'parent traversal' => ['filepond/../outside.pdf'],
+            'root itself' => ['filepond'],
+            'nested traversal' => ['filepond/upload/../../outside.pdf'],
+            'backslash traversal' => ['filepond/upload\\..\\outside.pdf'],
+            'empty filename' => ['filepond/'],
+            'empty directory' => ['filepond//file.pdf'],
+            'dot directory' => ['filepond/./file.pdf'],
+            'null byte' => ["filepond/upload/file\0.pdf"],
+            'control character' => ["filepond/upload/file\n.pdf"],
+            'delete character' => ["filepond/upload/file\x7f.pdf"],
+        ];
     }
 
     #[DataProvider('invalidPaths')]
-    public function test_revert_rejects_paths_outside_the_temporary_upload_root(string $path): void
+    public function test_revert_rejects_invalid_temporary_upload_paths(string $path): void
     {
         Storage::fake('local');
         $this->call('DELETE', '/filepond/api/process', [], [], [], [], Crypt::encryptString($path))->assertBadRequest();

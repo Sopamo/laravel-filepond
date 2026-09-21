@@ -14,13 +14,14 @@ final class FilesystemChunkWriteHandler implements ChunkWriteHandler
 
     public function store(ChunkUploadRequest $chunkUploadRequest, string $content): void
     {
-        $basePath = $this->uploadPathResolver->chunkStoragePath($chunkUploadRequest->finalFilePath());
+        $filePath = $chunkUploadRequest->finalFilePath();
+        $basePath = $this->uploadPathResolver->chunkStoragePath($filePath);
 
         // An empty upload is assembled from an empty part list below.
-        $isEmptyUpload = $content === '' && $chunkUploadRequest->length() === 0 && $chunkUploadRequest->offset() === 0;
-        if (!$isEmptyUpload) {
+        if (!$chunkUploadRequest->isEmptyUpload($content)) {
+            $chunkPath = $basePath.DIRECTORY_SEPARATOR.'patch.'.$chunkUploadRequest->offset();
             $stored = $this->storage->put(
-                $basePath.DIRECTORY_SEPARATOR.'patch.'.$chunkUploadRequest->offset(),
+                $chunkPath,
                 $content,
                 ['mimetype' => 'application/octet-stream']
             );
@@ -34,7 +35,7 @@ final class FilesystemChunkWriteHandler implements ChunkWriteHandler
             return;
         }
 
-        $this->mergeChunks($chunkCollection, $chunkUploadRequest->finalFilePath());
+        $this->mergeChunks($chunkCollection, $filePath);
         $this->storage->deleteDirectory($basePath);
     }
 

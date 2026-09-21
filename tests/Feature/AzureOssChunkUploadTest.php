@@ -3,6 +3,7 @@
 namespace Sopamo\LaravelFilepond\Tests\Feature;
 
 use Illuminate\Support\Facades\Crypt;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Sopamo\LaravelFilepond\Filepond;
 use Sopamo\LaravelFilepond\Tests\AzureTestCase;
 
@@ -42,20 +43,43 @@ class AzureOssChunkUploadTest extends AzureTestCase
         $this->sendChunk($id, 'hello ', 0, 11)->assertNoContent();
         $this->sendChunk($id, 'world', 6, 11)->assertNoContent();
         $this->assertSame('hello world', $this->storage->get($path));
-        $this->assertCount(4, $this->azureRequests());
+        $requests = $this->azureRequests();
+        $this->assertCount(4, $requests);
+        $headers = array_change_key_case($requests[3]['headers']);
+        $this->assertSame('application/octet-stream', $headers['x-ms-blob-content-type'] ?? null);
         $this->assertFalse($this->storage->exists($manifestPath));
     }
 
-    public function test_azure_commit_preserves_the_initial_pdf_content_type(): void
+    public static function contentTypes(): array
     {
-        $response = $this->post('/filepond/api/process', ['file' => ['{}']], [
-            'Upload-Name' => 'manual.pdf', 'Content-Type' => 'application/pdf',
-        ])->assertOk();
+        return [
+            'file MIME type' => ['application/pdf', 'application/pdf'],
+            'case and parameters' => [' Application/PDF ; charset=binary', 'application/pdf'],
+            'JSON file MIME type' => ['application/json', 'application/json'],
+            'multipart metadata' => ['multipart/form-data; boundary=filepond', null],
+            'form metadata' => ['application/x-www-form-urlencoded', null],
+            'empty MIME type' => ['', null],
+            'missing MIME type' => [null, null],
+        ];
+    }
+
+    #[DataProvider('contentTypes')]
+    public function test_azure_commit_uses_the_file_mime_type_or_binary_default(?string $contentType, ?string $expectedContentType): void
+    {
+        $headers = ['Upload-Name' => 'manual.pdf'];
+        if ($contentType !== null) {
+            $headers['Content-Type'] = $contentType;
+        }
+        $response = $this->post('/filepond/api/process', ['file' => ['{}']], $headers)->assertOk();
         $id = $response->getContent();
+        $path = app(Filepond::class)->getPathFromServerId($id);
+        $manifestPath = config('filepond.chunks_path').'/'.sha1($path).'/manifest.json';
+        $this->assertSame($expectedContentType !== null, $this->storage->exists($manifestPath));
+
         $this->sendChunk($id, '%PDF', 0, 4)->assertNoContent();
         $requests = $this->azureRequests();
         $headers = array_change_key_case($requests[1]['headers']);
-        $this->assertSame('application/pdf', $headers['x-ms-blob-content-type'] ?? null);
+        $this->assertSame($expectedContentType ?? 'application/octet-stream', $headers['x-ms-blob-content-type'] ?? null);
         $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
     }
 

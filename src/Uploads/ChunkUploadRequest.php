@@ -8,8 +8,7 @@ final class ChunkUploadRequest
         private readonly string $finalFilePath,
         private readonly int $offset,
         private readonly int $length
-    )
-    {
+    ) {
         if ($finalFilePath === '') {
             throw new \InvalidArgumentException('Final file path must not be empty.');
         }
@@ -32,5 +31,15 @@ final class ChunkUploadRequest
     public function length(): int
     {
         return $this->length;
+    }
+
+    public function isEmptyUpload(string $content): bool
+    {
+        return $this->length === 0 && $this->offset === 0 && $content === '';
+    }
+
+    public function isTerminalEmptyChunk(string $content): bool
+    {
+        return $this->length > 0 && $this->offset === $this->length && $content === '';
     }
 }

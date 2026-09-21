@@ -4,6 +4,7 @@ namespace Sopamo\LaravelFilepond;
 
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Contracts\Encryption\StringEncrypter;
+use Illuminate\Support\Facades\Config;
 use Sopamo\LaravelFilepond\Exceptions\InvalidPathException;
 
 class ServerIdCodec
@@ -29,15 +30,32 @@ class ServerIdCodec
         }
 
         $filePath = $this->encrypter->decryptString($serverId);
-        $root = rtrim(str_replace('\\', '/', (string) config('filepond.temporary_files_path', 'filepond')), '/');
+        $this->validatePath($filePath);
+
+        return $filePath;
+    }
+
+    private function validatePath(string $filePath): void
+    {
+        $configuredRoot = Config::string('filepond.temporary_files_path');
+        $root = str_replace('\\', '/', $configuredRoot);
+        $root = rtrim($root, '/');
         $pathToValidate = str_replace('\\', '/', $filePath);
-        // Validate the storage key without URL-decoding or otherwise changing it.
-        if ($root === '' || !str_starts_with($pathToValidate, $root.'/')
-            || preg_match('/[\x00-\x1f\x7f]/', $filePath)
-            || array_intersect(explode('/', substr($pathToValidate, strlen($root) + 1)), ['', '.', '..']) !== []) {
+
+        if ($root === '' || !str_starts_with($pathToValidate, $root.'/')) {
             throw new InvalidPathException();
         }
 
-        return $filePath;
+        if (preg_match('/[\x00-\x1f\x7f]/', $filePath)) {
+            throw new InvalidPathException();
+        }
+
+        // Check the relative segments without URL-decoding or changing the returned key.
+        $relativePath = substr($pathToValidate, strlen($root) + 1);
+        foreach (explode('/', $relativePath) as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                throw new InvalidPathException();
+            }
+        }
     }
 }

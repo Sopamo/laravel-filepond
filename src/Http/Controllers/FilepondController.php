@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Routing\Controller as BaseController;
+use Illuminate\Support\Facades\Config;
 use Sopamo\LaravelFilepond\Exceptions\InvalidUploadRequestException;
 use Sopamo\LaravelFilepond\Uploads\ChunkUploadRequestFactory;
 use Sopamo\LaravelFilepond\Uploads\ChunkUploadService;
@@ -27,18 +28,18 @@ class FilepondController extends BaseController
      */
     public function upload(Request $request): Response
     {
-        $input = $request->file((string) config('filepond.input_name', 'file'));
+        $inputName = Config::string('filepond.input_name');
+        $input = $request->file($inputName);
 
         if ($input === null) {
-            return $this->plainTextResponse(
-                $this->temporaryUploadService->initializeChunkUpload(
-                    $request->header('Upload-Name'),
-                    $request->headers->get('Content-Type')
-                ),
-                200
-            );
+            $uploadName = $request->header('Upload-Name');
+            $contentType = $request->headers->get('Content-Type');
+            $serverId = $this->temporaryUploadService->initializeChunkUpload($uploadName, $contentType);
+
+            return $this->plainTextResponse($serverId, 200);
         }
 
+        // FilePond also supports array-style inputs such as file[].
         $file = is_array($input) ? reset($input) : $input;
         if (!$file instanceof UploadedFile) {
             return $this->plainTextResponse('Could not save file', 500);
@@ -60,7 +61,8 @@ class FilepondController extends BaseController
             throw new BadRequestHttpException($exception->getMessage(), $exception);
         }
 
-        $this->chunkUploadService->store($chunk, $request->getContent());
+        $content = $request->getContent();
+        $this->chunkUploadService->store($chunk, $content);
 
         return $this->plainTextResponse('', 204);
     }
@@ -71,8 +73,9 @@ class FilepondController extends BaseController
      */
     public function delete(Request $request): Response
     {
+        $serverId = $request->getContent();
         try {
-            $deleted = $this->temporaryUploadService->deleteByServerId($request->getContent());
+            $deleted = $this->temporaryUploadService->deleteByServerId($serverId);
         } catch (InvalidUploadRequestException $exception) {
             throw new BadRequestHttpException($exception->getMessage(), $exception);
         }

@@ -17,32 +17,40 @@ final class AzureBlockBlobChunkWriteHandler implements ChunkWriteHandler
 
     public function store(ChunkUploadRequest $chunkUploadRequest, string $content): void
     {
-        $blockBlobClient = $this->azure->client($chunkUploadRequest->finalFilePath());
-        $blockId = $this->buildBlockId($chunkUploadRequest->offset());
+        $filePath = $chunkUploadRequest->finalFilePath();
+        $offset = $chunkUploadRequest->offset();
+        $uploadLength = $chunkUploadRequest->length();
+        $blockBlobClient = $this->azure->client($filePath);
+        $blockId = $this->buildBlockId($offset);
 
-        $manifestPath = $this->uploadPathResolver->azureManifestPath($chunkUploadRequest->finalFilePath());
-        $manifest = $this->loadManifest($manifestPath)
-            ->withUploadLength($chunkUploadRequest->length());
+        $manifestPath = $this->uploadPathResolver->azureManifestPath($filePath);
+        $manifest = $this->loadManifest($manifestPath);
+        $manifest = $manifest->withUploadLength($uploadLength);
 
-        $isEmptyUpload = $content === '' && $chunkUploadRequest->length() === 0 && $chunkUploadRequest->offset() === 0;
-        if (!$isEmptyUpload) {
+        if (!$chunkUploadRequest->isEmptyUpload($content)) {
             $blockBlobClient->stageBlock($blockId, $content);
-            $manifest = $manifest->withChunk(new ChunkPart($chunkUploadRequest->offset(), strlen($content), $blockId));
+            $part = new ChunkPart($offset, strlen($content), $blockId);
+            $manifest = $manifest->withChunk($part);
         }
 
-        if ($this->storage->put($manifestPath, $manifest->toJson()) === false) {
+        $manifestJson = $manifest->toJson();
+        if ($this->storage->put($manifestPath, $manifestJson) === false) {
             throw new \RuntimeException('Could not persist the Azure block blob chunk upload manifest.');
         }
 
         $chunkCollection = $manifest->toChunkCollection();
-        if (!$chunkCollection->isComplete($manifest->uploadLength())) {
+        if (!$chunkCollection->isComplete($uploadLength)) {
             return;
         }
 
-        $blockBlobClient->commitBlockList($chunkCollection->orderedReferences(), new CommitBlockListOptions(
-            new BlobHttpHeaders(contentType: $manifest->contentType() ?? 'application/octet-stream')
-        ));
-        $this->storage->deleteDirectory($this->uploadPathResolver->chunkStoragePath($chunkUploadRequest->finalFilePath()));
+        $contentType = $manifest->contentType() ?? 'application/octet-stream';
+        $headers = new BlobHttpHeaders(contentType: $contentType);
+        $options = new CommitBlockListOptions($headers);
+        $blockIds = $chunkCollection->orderedReferences();
+        $blockBlobClient->commitBlockList($blockIds, $options);
+
+        $chunkDirectory = $this->uploadPathResolver->chunkStoragePath($filePath);
+        $this->storage->deleteDirectory($chunkDirectory);
     }
 
     private function buildBlockId(int $offset): string

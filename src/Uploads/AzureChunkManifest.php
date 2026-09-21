@@ -10,10 +10,14 @@ final class AzureChunkManifest
     private function __construct(
         private int $uploadLength,
         private array $partsByOffset,
-        private readonly ?string $contentType = null
+        private readonly ?string $contentType
     ) {
     }
 
+    /**
+     * Null means that initialization did not supply a file MIME type.
+     * Older manifests also omit it; Azure then uses application/octet-stream.
+     */
     public static function empty(?string $contentType = null): self
     {
         return new self(0, [], $contentType);

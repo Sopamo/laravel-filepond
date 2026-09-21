@@ -11,14 +11,18 @@ jobs:
       fail-fast: false
       matrix:
         php: ['8.2', '8.3', '8.4', '8.5']
-        laravel: ['12.*', '13.*']
+        laravel: ['11.*', '12.*', '13.*']
         dependency-version: [prefer-lowest, prefer-stable]
         include:
+          - laravel: '11.*'
+            testbench: '^9.0'
           - laravel: '12.*'
             testbench: '^10.0'
           - laravel: '13.*'
             testbench: '^11.0'
         exclude:
+          - laravel: '11.*'
+            php: '8.5'
           - laravel: '13.*'
             php: '8.2'
     name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }} / ${{ matrix.dependency-version }}
@@ -29,10 +33,25 @@ jobs:
           php-version: ${{ matrix.php }}
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo_sqlite, fileinfo, simplexml
           coverage: none
+      - name: Allow known Laravel 11 advisories for compatibility testing
+        if: matrix.laravel == '11.*'
+        # These exceptions affect only this CI checkout. "apply: block" keeps
+        # the advisories visible in audits; new advisories still block installs.
+        run: |
+          composer config --json audit.ignore '{
+            "PKSA-m5cs-t1y6-qpcs": {"apply": "block", "reason": "Test Laravel 11 compatibility; report this framework advisory in audits."},
+            "PKSA-3r5d-mb8f-1qw9": {"apply": "block", "reason": "Test Laravel 11 compatibility; report this framework advisory in audits."},
+            "PKSA-mdq4-51ck-6kdq": {"apply": "block", "reason": "Test Laravel 11 compatibility; report this framework advisory in audits."}
+          }'
       - name: Install dependencies
         run: |
+          composer config minimum-stability stable
           composer require --dev "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
           composer update --${{ matrix.dependency-version }} --prefer-dist --no-interaction
+      - name: Report Laravel 11 dependency advisories
+        if: matrix.laravel == '11.*'
+        continue-on-error: true
+        run: composer audit
       - run: composer validate --strict
       - run: composer test
       - name: Static analysis

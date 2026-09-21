@@ -4,6 +4,7 @@ namespace Sopamo\LaravelFilepond\Uploads;
 
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Filesystem\FilesystemManager;
+use Illuminate\Support\Facades\Config;
 
 class ChunkUploadService
 {
@@ -17,12 +18,12 @@ class ChunkUploadService
     {
         // FilePond sends an empty terminal PATCH for exact chunk-size multiples.
         // Completion already happened on the last data chunk; there is no part to store.
-        if ($content === '' && $chunkUploadRequest->length() > 0
-            && $chunkUploadRequest->offset() === $chunkUploadRequest->length()) {
+        if ($chunkUploadRequest->isTerminalEmptyChunk($content)) {
             return;
         }
 
-        $storage = $this->storageManager->disk((string) config('filepond.temporary_files_disk', 'local'));
+        $disk = Config::string('filepond.temporary_files_disk');
+        $storage = $this->storageManager->disk($disk);
         if (!$storage instanceof FilesystemAdapter) {
             throw new \RuntimeException('Could not resolve the temporary upload storage.');
         }

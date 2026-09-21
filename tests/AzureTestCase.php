@@ -24,6 +24,8 @@ abstract class AzureTestCase extends TestCase
         $address = stream_socket_get_name($socket, false);
         fclose($socket);
 
+        // The SDK owns its HTTP client, so Laravel's Http::fake() cannot intercept it.
+        // This fixture exercises actual SDK requests without requiring an Azure account.
         $this->server = proc_open([PHP_BINARY, '-S', $address, __DIR__.'/Fixtures/azure-router.php'], [
             0 => ['pipe', 'r'],
             1 => ['file', $this->azureRoot.'/server.log', 'a'],
