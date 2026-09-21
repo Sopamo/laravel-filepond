@@ -7,7 +7,7 @@ use Illuminate\Support\ServiceProvider;
 
 class LaravelFilepondServiceProvider extends ServiceProvider
 {
-    public function boot()
+    public function boot(): void
     {
         $this->registerRoutes();
         $this->publishes([
@@ -18,34 +18,33 @@ class LaravelFilepondServiceProvider extends ServiceProvider
     /**
      * {@inheritdoc}
      */
-    public function register()
+    public function register(): void
     {
         $this->mergeConfigFrom(
             $this->getConfigFile(),
-            'filepond'
+            'filepond',
         );
     }
 
     /**
      * Register Filepond routes.
-     *
-     * @return void
      */
-    protected function registerRoutes()
+    protected function registerRoutes(): void
     {
+        if (!config('filepond.routes_enabled', true)) {
+            return;
+        }
+
         Route::group([
             'prefix' => config('filepond.route_prefix', 'filepond'),
             'middleware' => config('filepond.middleware', null),
         ], function () {
-            $this->loadRoutesFrom(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'routes' . DIRECTORY_SEPARATOR . 'web.php');
+            $this->loadRoutesFrom(__DIR__.DIRECTORY_SEPARATOR.'..'.DIRECTORY_SEPARATOR.'routes'.DIRECTORY_SEPARATOR.'web.php');
         });
     }
 
-    /**
-     * @return string
-     */
     protected function getConfigFile(): string
     {
-        return __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'filepond.php';
+        return __DIR__.DIRECTORY_SEPARATOR.'..'.DIRECTORY_SEPARATOR.'config'.DIRECTORY_SEPARATOR.'filepond.php';
     }
 }

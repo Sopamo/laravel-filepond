@@ -2,26 +2,23 @@
 
 namespace Sopamo\LaravelFilepond\Tests;
 
-
+use Orchestra\Testbench\TestCase as OrchestraTestCase;
 use Sopamo\LaravelFilepond\LaravelFilepondServiceProvider;
 
-class TestCase extends \Orchestra\Testbench\TestCase
+class TestCase extends OrchestraTestCase
 {
-    public function setUp(): void
-    {
-        parent::setUp();
-        // additional setup
-    }
-
-    protected function getPackageProviders($app)
+    protected function getPackageProviders($app): array
     {
         return [
             LaravelFilepondServiceProvider::class,
         ];
     }
 
-    protected function getEnvironmentSetUp($app)
+    protected function getEnvironmentSetUp($app): void
     {
-        // perform environment setup
+        $app->useStoragePath(sys_get_temp_dir().'/laravel-filepond-tests-'.getmypid());
+        $app['config']->set('cache.default', 'array');
+        $app['config']->set('filesystems.default', 'local');
+        $app['config']->set('filepond.routes_enabled', true);
     }
 }

@@ -6,4 +6,5 @@ use Throwable;
 
 interface LaravelFilepondException extends Throwable
 {
+    public function status(): int;
 }

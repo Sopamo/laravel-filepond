@@ -2,16 +2,21 @@
 
 namespace Sopamo\LaravelFilepond\Exceptions;
 
-class InvalidPathException extends \InvalidArgumentException implements LaravelFilepondException
+use InvalidArgumentException;
+use Throwable;
+
+class InvalidPathException extends InvalidArgumentException implements LaravelFilepondException
 {
-    /**
-     * @param  string $message
-     * @param  int $code
-     */
     public function __construct(
-        $message = 'The given file path was invalid',
-        $code = 400
+        string $message = 'The given file path was invalid',
+        int $code = 400,
+        ?Throwable $previous = null,
     ) {
-        parent::__construct($message, $code);
+        parent::__construct($message, $code, $previous);
+    }
+
+    public function status(): int
+    {
+        return $this->getCode();
     }
 }
