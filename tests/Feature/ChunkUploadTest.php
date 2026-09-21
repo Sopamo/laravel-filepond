@@ -155,6 +155,91 @@ class ChunkUploadTest extends TestCase
         $this->sendChunk('not-a-valid-server-id', 'test', 0, 4)->assertStatus(400);
     }
 
+    public function test_terminal_empty_patch_before_uploading_data_returns_conflict(): void
+    {
+        $storage = Storage::fake('local');
+        $id = $this->initializeChunkUpload('example.txt', 4);
+
+        $this->sendChunk($id, '', 4, 4)
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'The uploaded file is incomplete or no longer available.');
+
+        $this->assertSame([], $storage->allFiles());
+    }
+
+    public function test_rejected_terminal_patch_preserves_parts_for_completion(): void
+    {
+        $storage = Storage::fake('local');
+        $id = $this->initializeChunkUpload('example.txt', 11);
+        $path = app(Filepond::class)->getPathFromServerId($id);
+        $parts = $this->buildChunkStoragePath($path);
+
+        $this->sendChunk($id, 'hello ', 0, 11)->assertNoContent();
+        $this->sendChunk($id, '', 11, 11)->assertStatus(409);
+        $this->assertSame('hello ', $storage->get($parts.'/patch.0'));
+        $storage->assertMissing($path);
+
+        $this->sendChunk($id, 'world', 6, 11)->assertNoContent();
+        $this->sendChunk($id, '', 11, 11)->assertNoContent();
+        $this->assertSame('hello world', $storage->get($path));
+        $this->assertSame([], $storage->allFiles($parts));
+    }
+
+    public function test_terminal_empty_patch_after_final_file_loss_returns_conflict(): void
+    {
+        $storage = Storage::fake('local');
+        $id = $this->initializeChunkUpload('example.txt', 4);
+        $path = app(Filepond::class)->getPathFromServerId($id);
+
+        $this->sendChunk($id, 'test', 0, 4)->assertNoContent();
+        $storage->delete($path);
+        $this->sendChunk($id, '', 4, 4)->assertStatus(409);
+
+        $storage->assertMissing($path);
+        $this->assertSame([], $storage->allFiles(config('filepond.chunks_path')));
+    }
+
+    public function test_terminal_empty_patch_rejects_a_final_file_with_the_wrong_size(): void
+    {
+        $storage = Storage::fake('local');
+        $id = $this->initializeChunkUpload('example.txt', 4);
+        $path = app(Filepond::class)->getPathFromServerId($id);
+
+        $this->sendChunk($id, 'test', 0, 4)->assertNoContent();
+        $storage->put($path, 'x');
+        $this->sendChunk($id, '', 4, 4)->assertStatus(409);
+
+        $this->assertSame('x', $storage->get($path));
+        $this->assertSame([], $storage->allFiles(config('filepond.chunks_path')));
+    }
+
+    public function test_last_data_chunk_retry_does_not_recreate_chunk_files(): void
+    {
+        $storage = Storage::fake('local');
+        $id = $this->initializeChunkUpload('example.txt', 11);
+        $path = app(Filepond::class)->getPathFromServerId($id);
+
+        $this->sendChunk($id, 'hello ', 0, 11)->assertNoContent();
+        $this->sendChunk($id, 'world', 6, 11)->assertNoContent();
+        $this->sendChunk($id, 'world', 6, 11)->assertNoContent();
+
+        $this->assertSame('hello world', $storage->get($path));
+        $this->assertSame([], $storage->allFiles(config('filepond.chunks_path')));
+    }
+
+    public function test_terminal_patch_with_an_invalid_server_id_still_returns_bad_request(): void
+    {
+        $this->sendChunk('not-a-valid-server-id', '', 4, 4)->assertStatus(400);
+    }
+
+    public function test_invalid_chunk_offset_still_returns_bad_request(): void
+    {
+        Storage::fake('local');
+        $id = $this->initializeChunkUpload('example.txt', 4);
+
+        $this->sendChunk($id, 'test', -1, 4)->assertStatus(400);
+    }
+
     private function initializeChunkUpload(string $uploadName, int $uploadLength): string
     {
         $response = $this->call(
@@ -184,6 +269,7 @@ class ChunkUploadTest extends TestCase
             [],
             [
                 'CONTENT_TYPE' => 'application/offset+octet-stream',
+                'HTTP_ACCEPT' => 'application/json',
                 'HTTP_UPLOAD_OFFSET' => (string) $offset,
                 'HTTP_UPLOAD_LENGTH' => (string) $uploadLength,
             ],

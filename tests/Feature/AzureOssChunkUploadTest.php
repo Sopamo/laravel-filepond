@@ -115,6 +115,93 @@ class AzureOssChunkUploadTest extends AzureTestCase
         $this->assertSame('abcd', $this->storage->get($path));
     }
 
+    public function test_terminal_empty_azure_patch_before_uploading_data_returns_conflict(): void
+    {
+        $path = 'filepond/not-started/example.txt';
+        $this->sendChunk(Crypt::encryptString($path), '', 4, 4)
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'The uploaded file is incomplete or no longer available.');
+
+        $this->assertSame([], $this->storage->allFiles());
+        $this->assertFileDoesNotExist($this->azureRoot.'/requests.jsonl');
+    }
+
+    public function test_rejected_terminal_azure_patch_preserves_the_manifest_for_completion(): void
+    {
+        $path = 'filepond/incomplete/example.txt';
+        $id = Crypt::encryptString($path);
+        $manifestPath = config('filepond.chunks_path').'/'.sha1($path).'/manifest.json';
+
+        $this->sendChunk($id, 'hello ', 0, 11)->assertNoContent();
+        $manifest = $this->storage->get($manifestPath);
+        $this->sendChunk($id, '', 11, 11)->assertStatus(409);
+        $this->assertSame($manifest, $this->storage->get($manifestPath));
+        $this->assertFalse($this->storage->exists($path));
+        $this->assertCount(1, $this->azureRequests());
+
+        $this->sendChunk($id, 'world', 6, 11)->assertNoContent();
+        $this->sendChunk($id, '', 11, 11)->assertNoContent();
+        $this->assertSame('hello world', $this->storage->get($path));
+        $this->assertCount(3, $this->azureRequests());
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
+    }
+
+    public function test_terminal_empty_azure_patch_after_final_file_loss_returns_conflict(): void
+    {
+        $path = 'filepond/lost/example.txt';
+        $id = Crypt::encryptString($path);
+
+        $this->sendChunk($id, 'test', 0, 4)->assertNoContent();
+        $this->storage->delete($path);
+        $this->sendChunk($id, '', 4, 4)->assertStatus(409);
+
+        $this->assertFalse($this->storage->exists($path));
+        $this->assertCount(2, $this->azureRequests());
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
+    }
+
+    public function test_terminal_empty_azure_patch_rejects_a_final_file_with_the_wrong_size(): void
+    {
+        $path = 'filepond/wrong-size/example.txt';
+        $id = Crypt::encryptString($path);
+
+        $this->sendChunk($id, 'test', 0, 4)->assertNoContent();
+        $this->storage->put($path, 'x');
+        $this->sendChunk($id, '', 4, 4)->assertStatus(409);
+
+        $this->assertSame('x', $this->storage->get($path));
+        $this->assertCount(2, $this->azureRequests());
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
+    }
+
+    public static function completedUploadParts(): array
+    {
+        return [
+            'single data chunk' => [['hello world']],
+            'multiple data chunks' => [['hello ', 'world']],
+        ];
+    }
+
+    #[DataProvider('completedUploadParts')]
+    public function test_last_data_chunk_retry_does_not_stage_azure_blocks_or_recreate_a_manifest(array $parts): void
+    {
+        $path = 'filepond/completed/example.txt';
+        $id = Crypt::encryptString($path);
+        $offset = 0;
+        foreach ($parts as $part) {
+            $this->sendChunk($id, $part, $offset, 11)->assertNoContent();
+            $offset += strlen($part);
+        }
+        $requests = $this->azureRequests();
+        $lastPart = end($parts);
+
+        $this->sendChunk($id, $lastPart, 11 - strlen($lastPart), 11)->assertNoContent();
+
+        $this->assertSame('hello world', $this->storage->get($path));
+        $this->assertSame($requests, $this->azureRequests());
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
+    }
+
     public function test_binary_uploads_stage_each_byte_once_and_use_a_server_side_commit(): void
     {
         $path = 'filepond/binary/archive.wbt';
@@ -134,6 +221,7 @@ class AzureOssChunkUploadTest extends AzureTestCase
     {
         return $this->call('PATCH', '/filepond/api?patch='.$id, [], [], [], [
             'CONTENT_TYPE' => 'application/offset+octet-stream',
+            'HTTP_ACCEPT' => 'application/json',
             'HTTP_UPLOAD_OFFSET' => (string) $offset,
             'HTTP_UPLOAD_LENGTH' => (string) $length,
         ], $content);

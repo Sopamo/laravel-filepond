@@ -7,11 +7,13 @@ use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\Config;
+use Sopamo\LaravelFilepond\Exceptions\IncompleteUploadException;
 use Sopamo\LaravelFilepond\Exceptions\InvalidUploadRequestException;
 use Sopamo\LaravelFilepond\Uploads\ChunkUploadRequestFactory;
 use Sopamo\LaravelFilepond\Uploads\ChunkUploadService;
 use Sopamo\LaravelFilepond\Uploads\TemporaryUploadService;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class FilepondController extends BaseController
 {
@@ -57,11 +59,12 @@ class FilepondController extends BaseController
     {
         try {
             $chunk = $this->chunkUploadRequestFactory->fromRequest($request);
+            $this->chunkUploadService->store($chunk, $request->getContent());
         } catch (InvalidUploadRequestException $exception) {
             throw new BadRequestHttpException($exception->getMessage(), $exception);
+        } catch (IncompleteUploadException $exception) {
+            throw new ConflictHttpException($exception->getMessage(), $exception);
         }
-
-        $this->chunkUploadService->store($chunk, $request->getContent());
 
         return $this->plainTextResponse('', 204);
     }

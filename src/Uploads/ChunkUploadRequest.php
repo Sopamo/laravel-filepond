@@ -42,4 +42,9 @@ final class ChunkUploadRequest
     {
         return $this->length > 0 && $this->offset === $this->length && $content === '';
     }
+
+    public function isLastDataChunk(string $content): bool
+    {
+        return $content !== '' && strlen($content) === $this->length - $this->offset;
+    }
 }
