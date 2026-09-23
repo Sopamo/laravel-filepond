@@ -35,25 +35,28 @@ class TemporaryUploadService
     }
 
     /**
+     * Preserve an optional file MIME type for the final Azure block commit.
+     * Chunk requests carry a transfer content type, not the original file's type.
+     *
      * @param array<int, string>|string|null $uploadName
      */
-    public function initializeChunkUpload(array|string|null $uploadName, ?string $contentType = null): string
+    public function initializeChunkUpload(array|string|null $uploadName, ?string $fileContentType = null): string
     {
         $fileLocation = $this->uploadPathResolver->buildChunkInitializationPath($uploadName);
-        $this->storeAzureContentType($fileLocation, $contentType);
+        $this->storeAzureContentType($fileLocation, $fileContentType);
 
         return $this->serverIdCodec->encode($fileLocation);
     }
 
-    private function storeAzureContentType(string $filePath, ?string $contentType): void
+    private function storeAzureContentType(string $filePath, ?string $fileContentType): void
     {
-        if ($contentType === null) {
+        if ($fileContentType === null) {
             return;
         }
 
         // A process header callback may supply the file MIME type. The usual
         // multipart metadata request's type is not the uploaded file's type.
-        $mediaType = explode(';', $contentType, 2)[0];
+        $mediaType = explode(';', $fileContentType, 2)[0];
         $mediaType = strtolower(trim($mediaType));
         if ($mediaType === '' || str_starts_with($mediaType, 'multipart/')
             || $mediaType === 'application/x-www-form-urlencoded') {
@@ -66,6 +69,7 @@ class TemporaryUploadService
         }
 
         $manifestPath = $this->uploadPathResolver->azureManifestPath($filePath);
+        // Keep the file MIME type available across requests until the blocks are committed.
         $manifest = AzureChunkManifest::empty($mediaType);
         if (!$storage->put($manifestPath, $manifest->toJson())) {
             throw new \RuntimeException('Could not persist the Azure upload content type.');
