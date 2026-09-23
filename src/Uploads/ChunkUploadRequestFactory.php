@@ -16,11 +16,11 @@ class ChunkUploadRequestFactory
      */
     public function fromRequest(Request $request): ChunkUploadRequest
     {
-        return new ChunkUploadRequest(
-            $this->serverIdPathResolver->resolvePath($request->input('patch')),
-            $this->integerHeader($request->header('Upload-Offset')),
-            $this->integerHeader($request->header('Upload-Length'))
-        );
+        $path = $this->serverIdPathResolver->resolvePath($request->input('patch'));
+        $offset = $this->integerHeader($request->header('Upload-Offset'));
+        $length = $this->integerHeader($request->header('Upload-Length'));
+
+        return new ChunkUploadRequest($path, $offset, $length);
     }
 
     /**
