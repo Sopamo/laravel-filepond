@@ -43,12 +43,12 @@ class TemporaryUploadService
     public function initializeChunkUpload(array|string|null $uploadName, ?string $fileContentType = null): string
     {
         $fileLocation = $this->uploadPathResolver->buildChunkInitializationPath($uploadName);
-        $this->storeAzureContentType($fileLocation, $fileContentType);
+        $this->storeAzureFileContentType($fileLocation, $fileContentType);
 
         return $this->serverIdCodec->encode($fileLocation);
     }
 
-    private function storeAzureContentType(string $filePath, ?string $fileContentType): void
+    private function storeAzureFileContentType(string $filePath, ?string $fileContentType): void
     {
         if ($fileContentType === null) {
             return;

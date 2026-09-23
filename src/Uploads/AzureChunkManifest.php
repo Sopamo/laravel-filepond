@@ -10,7 +10,7 @@ final class AzureChunkManifest
     private function __construct(
         private int $uploadLength,
         private array $partsByOffset,
-        private readonly ?string $contentType
+        private readonly ?string $fileContentType
     ) {
     }
 
@@ -18,9 +18,9 @@ final class AzureChunkManifest
      * Null means that initialization did not supply a file MIME type.
      * Older manifests also omit it; Azure then uses application/octet-stream.
      */
-    public static function empty(?string $contentType = null): self
+    public static function empty(?string $fileContentType = null): self
     {
-        return new self(0, [], $contentType);
+        return new self(0, [], $fileContentType);
     }
 
     public static function fromJson(string $json): self
@@ -37,11 +37,11 @@ final class AzureChunkManifest
             throw new \RuntimeException('Invalid Azure block blob chunk upload manifest.');
         }
 
-        $contentType = $decoded['content_type'] ?? null;
-        if ($contentType !== null && !is_string($contentType)) {
+        $fileContentType = $decoded['content_type'] ?? null;
+        if ($fileContentType !== null && !is_string($fileContentType)) {
             throw new \RuntimeException('Invalid Azure block blob content type.');
         }
-        $manifest = new self($uploadLength, [], $contentType);
+        $manifest = new self($uploadLength, [], $fileContentType);
 
         foreach ($chunks as $chunk) {
             if (!is_array($chunk)) {
@@ -87,9 +87,9 @@ final class AzureChunkManifest
         return $this->uploadLength;
     }
 
-    public function contentType(): ?string
+    public function fileContentType(): ?string
     {
-        return $this->contentType;
+        return $this->fileContentType;
     }
 
     /**
@@ -118,8 +118,8 @@ final class AzureChunkManifest
                 $this->parts()
             ),
         ];
-        if ($this->contentType !== null) {
-            $payload['content_type'] = $this->contentType;
+        if ($this->fileContentType !== null) {
+            $payload['content_type'] = $this->fileContentType;
         }
 
         $json = json_encode($payload);

@@ -41,9 +41,9 @@ final class AzureBlockBlobChunkWriteHandler implements ChunkWriteHandler
             return;
         }
 
-        $contentType = $manifest->contentType() ?? 'application/octet-stream';
+        $fileContentType = $manifest->fileContentType() ?? 'application/octet-stream';
         $options = new CommitBlockListOptions(
-            new BlobHttpHeaders(contentType: $contentType)
+            new BlobHttpHeaders(contentType: $fileContentType)
         );
         $blockBlobClient->commitBlockList($chunkCollection->orderedReferences(), $options);
 

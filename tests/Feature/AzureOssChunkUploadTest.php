@@ -64,22 +64,22 @@ class AzureOssChunkUploadTest extends AzureTestCase
     }
 
     #[DataProvider('contentTypes')]
-    public function test_azure_commit_uses_the_file_mime_type_or_binary_default(?string $contentType, ?string $expectedContentType): void
+    public function test_azure_commit_uses_the_file_mime_type_or_binary_default(?string $requestContentType, ?string $expectedFileContentType): void
     {
         $headers = ['Upload-Name' => 'manual.pdf'];
-        if ($contentType !== null) {
-            $headers['Content-Type'] = $contentType;
+        if ($requestContentType !== null) {
+            $headers['Content-Type'] = $requestContentType;
         }
         $response = $this->post('/filepond/api/process', ['file' => ['{}']], $headers)->assertOk();
         $id = $response->getContent();
         $path = app(Filepond::class)->getPathFromServerId($id);
         $manifestPath = config('filepond.chunks_path').'/'.sha1($path).'/manifest.json';
-        $this->assertSame($expectedContentType !== null, $this->storage->exists($manifestPath));
+        $this->assertSame($expectedFileContentType !== null, $this->storage->exists($manifestPath));
 
         $this->sendChunk($id, '%PDF', 0, 4)->assertNoContent();
         $requests = $this->azureRequests();
         $headers = array_change_key_case($requests[1]['headers']);
-        $this->assertSame($expectedContentType ?? 'application/octet-stream', $headers['x-ms-blob-content-type'] ?? null);
+        $this->assertSame($expectedFileContentType ?? 'application/octet-stream', $headers['x-ms-blob-content-type'] ?? null);
         $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
     }
 
