@@ -38,6 +38,13 @@ class ChunkUploadRequestFactory
             throw new InvalidUploadRequestException('Invalid chunk length or offset');
         }
 
-        return (int) $normalizedValue;
+        // Reject numbers too large for a PHP int while allowing leading zeros.
+        $number = (int) $normalizedValue;
+        $digits = ltrim($normalizedValue, '0');
+        if ((string) $number !== ($digits === '' ? '0' : $digits)) {
+            throw new InvalidUploadRequestException('Invalid chunk length or offset');
+        }
+
+        return $number;
     }
 }

@@ -6,6 +6,7 @@ use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Support\Facades\Config;
 use Sopamo\LaravelFilepond\Exceptions\IncompleteUploadException;
+use Sopamo\LaravelFilepond\Exceptions\InvalidUploadRequestException;
 
 class ChunkUploadService
 {
@@ -17,6 +18,16 @@ class ChunkUploadService
 
     public function store(ChunkUploadRequest $chunkUploadRequest, string $content): void
     {
+        // Reject invalid ranges before storage access, including completion checks.
+        // Subtract rather than adding the body size to avoid integer overflow.
+        if ($chunkUploadRequest->offset() > $chunkUploadRequest->length()
+            || strlen($content) > $chunkUploadRequest->length() - $chunkUploadRequest->offset()
+            || ($content === ''
+                && !$chunkUploadRequest->isEmptyUpload($content)
+                && !$chunkUploadRequest->isTerminalEmptyChunk($content))) {
+            throw new InvalidUploadRequestException('Invalid chunk body or byte range');
+        }
+
         $storage = $this->storageManager->disk(Config::string('filepond.temporary_files_disk'));
         if (!$storage instanceof FilesystemAdapter) {
             throw new \RuntimeException('Could not resolve the temporary upload storage.');

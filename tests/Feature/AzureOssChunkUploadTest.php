@@ -4,11 +4,22 @@ namespace Sopamo\LaravelFilepond\Tests\Feature;
 
 use Illuminate\Support\Facades\Crypt;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\DataProviderExternal;
 use Sopamo\LaravelFilepond\Filepond;
 use Sopamo\LaravelFilepond\Tests\AzureTestCase;
 
 class AzureOssChunkUploadTest extends AzureTestCase
 {
+    #[DataProviderExternal(ChunkUploadTest::class, 'invalidChunks')]
+    public function test_invalid_chunks_do_not_stage_blocks_or_create_manifests(string $content, int $offset, int $length): void
+    {
+        $id = $this->post('/filepond/api/process', [], ['Upload-Name' => 'example.txt'])->assertOk()->getContent();
+        $this->sendChunk($id, $content, $offset, $length)->assertStatus(400);
+
+        $this->assertSame([], $this->storage->allFiles());
+        $this->assertFileDoesNotExist($this->azureRoot.'/requests.jsonl');
+    }
+
     public function test_real_sdk_stages_and_commits_out_of_order_blocks_with_the_storage_prefix(): void
     {
         $response = $this->post('/filepond/api/process', [], ['Upload-Name' => 'Safety+Association (1).pdf'])->assertOk();
