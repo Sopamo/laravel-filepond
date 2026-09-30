@@ -81,8 +81,8 @@ class TemporaryUploadService
         $filePath = $this->serverIdPathResolver->resolvePath($serverId);
         $storage = $this->temporaryStorage();
 
-        // Historical IDs can point directly into the shared temporary root.
-        // Delete the file first and remove its parent only when it is empty.
+        // Delete the file first, then remove its parent only if it is empty.
+        // Preserve the shared temporary directory and disk root.
         $fileDeleted = $storage->delete($filePath) || !$storage->exists($filePath);
         $chunkDirectory = $this->uploadPathResolver->chunkStoragePath($filePath);
         $chunkDirectoryDeleted = $this->deleteDirectoryIfItExists($storage, $chunkDirectory);

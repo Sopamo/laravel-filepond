@@ -43,7 +43,7 @@ class ServerIdCodec
         $pathToValidate = str_replace('\\', '/', $filePath);
 
         if ($root === '') {
-            // Disk-root uploads may have leading separators in historical IDs.
+            // Accept optional leading separators when using the disk root.
             $relativePath = ltrim($pathToValidate, '/');
         } else {
             // Require the directory prefix and separator so sibling roots do not match.
