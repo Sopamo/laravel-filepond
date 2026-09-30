@@ -87,9 +87,15 @@ class TemporaryUploadService
         $chunkDirectory = $this->uploadPathResolver->chunkStoragePath($filePath);
         $chunkDirectoryDeleted = $this->deleteDirectoryIfItExists($storage, $chunkDirectory);
 
-        $directory = dirname($filePath);
-        $temporaryRoot = rtrim(Config::string('filepond.temporary_files_path'), '/');
-        if ($fileDeleted && $directory !== $temporaryRoot && $storage->allFiles($directory) === []) {
+        $directory = dirname(str_replace('\\', '/', $filePath));
+        $directoryToCompare = trim($directory, '/');
+        $temporaryRoot = trim(
+            str_replace('\\', '/', Config::string('filepond.temporary_files_path')),
+            '/'
+        );
+        $isSharedRoot = in_array($directoryToCompare, ['', '.', $temporaryRoot], true);
+
+        if ($fileDeleted && !$isSharedRoot && $storage->allFiles($directory) === []) {
             $storage->deleteDirectory($directory);
         }
 

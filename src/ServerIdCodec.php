@@ -42,19 +42,22 @@ class ServerIdCodec
         $root = rtrim($root, '/');
         $pathToValidate = str_replace('\\', '/', $filePath);
 
-        // Require the temporary directory prefix, including its separator.
-        // For example, "filepond-other/file.pdf" must not match "filepond".
-        if ($root === '' || !str_starts_with($pathToValidate, $root.'/')) {
-            throw new InvalidPathException();
+        if ($root === '') {
+            // Disk-root uploads may have leading separators in historical IDs.
+            $relativePath = ltrim($pathToValidate, '/');
+        } else {
+            // Require the directory prefix and separator so sibling roots do not match.
+            if (!str_starts_with($pathToValidate, $root.'/')) {
+                throw new InvalidPathException();
+            }
+
+            $relativePath = substr($pathToValidate, strlen($root) + 1);
         }
 
         // Reject control characters, including null bytes and line breaks.
         if (preg_match('/[\x00-\x1f\x7f]/', $filePath)) {
             throw new InvalidPathException();
         }
-
-        // Inspect only the path beneath the configured temporary directory.
-        $relativePath = substr($pathToValidate, strlen($root) + 1);
 
         // Reject traversal and segments that storage backends may normalize
         // differently, such as "upload/../file.pdf" or "upload//file.pdf".

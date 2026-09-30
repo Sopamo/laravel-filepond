@@ -10,6 +10,27 @@ use Sopamo\LaravelFilepond\Tests\AzureTestCase;
 
 class AzureOssChunkUploadTest extends AzureTestCase
 {
+    #[DataProviderExternal(DiskRootUploadTest::class, 'temporaryRoots')]
+    public function test_disk_root_uploads_preserve_the_azure_storage_prefix(string $root): void
+    {
+        config(['filepond.temporary_files_path' => $root]);
+        $id = $this->post('/filepond/api/process', [], ['Upload-Name' => 'example.txt'])->assertOk()->getContent();
+        $path = app(Filepond::class)->getPathFromServerId($id);
+
+        $this->sendChunk($id, 'ab', 0, 4)->assertNoContent();
+        $this->sendChunk($id, 'cd', 2, 4)->assertNoContent();
+        $this->assertSame('abcd', $this->storage->get($path));
+        $this->assertSame(
+            ['azure-prefix/'.ltrim($path, '/')],
+            array_values(array_unique(array_column($this->azureRequests(), 'path')))
+        );
+        $this->assertSame([], $this->storage->allFiles(config('filepond.chunks_path')));
+
+        $this->call('DELETE', '/filepond/api/process', [], [], [], [], $id)->assertOk();
+        $this->assertSame([], $this->storage->allFiles());
+        $this->assertDirectoryExists($this->azureRoot.'/files/azure-prefix');
+    }
+
     #[DataProviderExternal(ChunkUploadTest::class, 'invalidChunks')]
     public function test_invalid_chunks_do_not_stage_blocks_or_create_manifests(string $content, int $offset, int $length): void
     {
