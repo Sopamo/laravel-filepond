@@ -2,18 +2,17 @@
 
 namespace Sopamo\LaravelFilepond\Uploads;
 
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 
 class UploadPathResolver
 {
-    public function __construct(private readonly FilepondConfiguration $configuration)
-    {
-    }
-
     public function buildSingleUploadPath(string $originalName): string
     {
-        return $this->configuration->temporaryFilesPath()
-            .DIRECTORY_SEPARATOR.Str::random()
+        $root = rtrim(Config::string('filepond.temporary_files_path'), '/\\');
+        $uploadDirectory = Str::random();
+
+        return $root.DIRECTORY_SEPARATOR.$uploadDirectory
             .DIRECTORY_SEPARATOR.$originalName;
     }
 
@@ -24,21 +23,18 @@ class UploadPathResolver
     {
         $uploadDirectory = Str::random();
         $normalizedUploadName = $this->normalizeUploadName($uploadName);
+        $filename = $normalizedUploadName === '' ? $uploadDirectory : basename($normalizedUploadName);
+        $root = rtrim(Config::string('filepond.temporary_files_path'), '/\\');
 
-        if ($normalizedUploadName === '') {
-            return $this->configuration->temporaryFilesPath()
-                .DIRECTORY_SEPARATOR.$uploadDirectory
-                .DIRECTORY_SEPARATOR.$uploadDirectory;
-        }
-
-        return $this->configuration->temporaryFilesPath()
-            .DIRECTORY_SEPARATOR.$uploadDirectory
-            .DIRECTORY_SEPARATOR.basename($normalizedUploadName);
+        return $root.DIRECTORY_SEPARATOR.$uploadDirectory.DIRECTORY_SEPARATOR.$filename;
     }
 
     public function chunkStoragePath(string $finalFilePath): string
     {
-        return $this->configuration->chunksPath().DIRECTORY_SEPARATOR.sha1($finalFilePath);
+        $root = Config::string('filepond.chunks_path');
+        $uploadId = sha1($finalFilePath);
+
+        return $root.DIRECTORY_SEPARATOR.$uploadId;
     }
 
     public function azureManifestPath(string $finalFilePath): string

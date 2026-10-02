@@ -14,14 +14,20 @@ final class FilesystemChunkWriteHandler implements ChunkWriteHandler
 
     public function store(ChunkUploadRequest $chunkUploadRequest, string $content): void
     {
-        $basePath = $this->uploadPathResolver->chunkStoragePath($chunkUploadRequest->finalFilePath());
+        $filePath = $chunkUploadRequest->finalFilePath();
+        $basePath = $this->uploadPathResolver->chunkStoragePath($filePath);
 
-        if ($this->storage->put(
-            $basePath.DIRECTORY_SEPARATOR.'patch.'.$chunkUploadRequest->offset(),
-            $content,
-            ['mimetype' => 'application/octet-stream']
-        ) === false) {
-            throw new \RuntimeException('Could not store the uploaded chunk.');
+        // An empty upload is assembled from an empty part list below.
+        if (!$chunkUploadRequest->isEmptyUpload($content)) {
+            $chunkPath = $basePath.DIRECTORY_SEPARATOR.'patch.'.$chunkUploadRequest->offset();
+            $stored = $this->storage->put(
+                $chunkPath,
+                $content,
+                ['mimetype' => 'application/octet-stream']
+            );
+            if ($stored === false) {
+                throw new \RuntimeException('Could not store the uploaded chunk.');
+            }
         }
 
         $chunkCollection = $this->collectChunks($basePath);
@@ -29,13 +35,19 @@ final class FilesystemChunkWriteHandler implements ChunkWriteHandler
             return;
         }
 
+        $this->mergeChunks($chunkCollection, $filePath);
+        $this->storage->deleteDirectory($basePath);
+    }
+
+    private function mergeChunks(ChunkCollection $chunks, string $finalPath): void
+    {
         $temporaryMergedFile = tmpfile();
         if ($temporaryMergedFile === false) {
             throw new \RuntimeException('Could not create a temporary file for chunk merging.');
         }
 
         try {
-            foreach ($chunkCollection->orderedReferences() as $chunkPath) {
+            foreach ($chunks->orderedReferences() as $chunkPath) {
                 $chunkStream = $this->storage->readStream($chunkPath);
                 if (!is_resource($chunkStream)) {
                     throw new \RuntimeException('Could not open an uploaded chunk for reading.');
@@ -50,14 +62,12 @@ final class FilesystemChunkWriteHandler implements ChunkWriteHandler
 
             rewind($temporaryMergedFile);
 
-            if ($this->storage->put($chunkUploadRequest->finalFilePath(), $temporaryMergedFile) === false) {
+            if ($this->storage->put($finalPath, $temporaryMergedFile) === false) {
                 throw new \RuntimeException('Could not persist the merged file.');
             }
         } finally {
             fclose($temporaryMergedFile);
         }
-
-        $this->storage->deleteDirectory($basePath);
     }
 
     private function collectChunks(string $basePath): ChunkCollection

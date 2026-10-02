@@ -11,12 +11,7 @@ class TestCase extends \Orchestra\Testbench\TestCase
      */
     private $temporaryDirectories = [];
 
-    public function setUp(): void
-    {
-        parent::setUp();
-    }
-
-    public function tearDown(): void
+    protected function tearDown(): void
     {
         foreach ($this->temporaryDirectories as $temporaryDirectory) {
             $this->deleteDirectoryRecursively($temporaryDirectory);
@@ -34,7 +29,7 @@ class TestCase extends \Orchestra\Testbench\TestCase
 
     protected function getEnvironmentSetUp($app)
     {
-        // perform environment setup
+        $app->useStoragePath($this->createTemporaryDirectory('filepond-tests'));
     }
 
     protected function createTemporaryDirectory($directoryName): string

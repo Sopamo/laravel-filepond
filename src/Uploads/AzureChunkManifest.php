@@ -9,13 +9,18 @@ final class AzureChunkManifest
      */
     private function __construct(
         private int $uploadLength,
-        private array $partsByOffset
+        private array $partsByOffset,
+        private readonly ?string $fileContentType
     ) {
     }
 
-    public static function empty(): self
+    /**
+     * Null means that initialization did not supply a file MIME type.
+     * Older manifests also omit it; Azure then uses application/octet-stream.
+     */
+    public static function empty(?string $fileContentType = null): self
     {
-        return new self(0, []);
+        return new self(0, [], $fileContentType);
     }
 
     public static function fromJson(string $json): self
@@ -32,7 +37,11 @@ final class AzureChunkManifest
             throw new \RuntimeException('Invalid Azure block blob chunk upload manifest.');
         }
 
-        $manifest = new self($uploadLength, []);
+        $fileContentType = $decoded['content_type'] ?? null;
+        if ($fileContentType !== null && !is_string($fileContentType)) {
+            throw new \RuntimeException('Invalid Azure block blob content type.');
+        }
+        $manifest = new self($uploadLength, [], $fileContentType);
 
         foreach ($chunks as $chunk) {
             if (!is_array($chunk)) {
@@ -78,6 +87,11 @@ final class AzureChunkManifest
         return $this->uploadLength;
     }
 
+    public function fileContentType(): ?string
+    {
+        return $this->fileContentType;
+    }
+
     /**
      * @return array<int, ChunkPart>
      */
@@ -104,6 +118,9 @@ final class AzureChunkManifest
                 $this->parts()
             ),
         ];
+        if ($this->fileContentType !== null) {
+            $payload['content_type'] = $this->fileContentType;
+        }
 
         $json = json_encode($payload);
         if (!is_string($json)) {

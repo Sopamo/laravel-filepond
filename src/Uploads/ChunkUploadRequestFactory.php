@@ -16,11 +16,11 @@ class ChunkUploadRequestFactory
      */
     public function fromRequest(Request $request): ChunkUploadRequest
     {
-        return new ChunkUploadRequest(
-            $this->serverIdPathResolver->resolvePath($request->input('patch')),
-            $this->integerHeader($request->header('Upload-Offset')),
-            $this->integerHeader($request->header('Upload-Length'))
-        );
+        $path = $this->serverIdPathResolver->resolvePath($request->input('patch'));
+        $offset = $this->integerHeader($request->header('Upload-Offset'));
+        $length = $this->integerHeader($request->header('Upload-Length'));
+
+        return new ChunkUploadRequest($path, $offset, $length);
     }
 
     /**
@@ -38,6 +38,13 @@ class ChunkUploadRequestFactory
             throw new InvalidUploadRequestException('Invalid chunk length or offset');
         }
 
-        return (int) $normalizedValue;
+        // Reject numbers too large for a PHP int while allowing leading zeros.
+        $number = (int) $normalizedValue;
+        $digits = ltrim($normalizedValue, '0');
+        if ((string) $number !== ($digits === '' ? '0' : $digits)) {
+            throw new InvalidUploadRequestException('Invalid chunk length or offset');
+        }
+
+        return $number;
     }
 }

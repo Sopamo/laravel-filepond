@@ -2,6 +2,7 @@
 
 namespace Sopamo\LaravelFilepond;
 
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -34,8 +35,8 @@ class LaravelFilepondServiceProvider extends ServiceProvider
     protected function registerRoutes(): void
     {
         Route::group([
-            'prefix' => config('filepond.route_prefix', 'filepond'),
-            'middleware' => config('filepond.middleware', null),
+            'prefix' => Config::string('filepond.route_prefix'),
+            'middleware' => config('filepond.middleware'),
         ], function () {
             $this->loadRoutesFrom(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'routes' . DIRECTORY_SEPARATOR . 'web.php');
         });
