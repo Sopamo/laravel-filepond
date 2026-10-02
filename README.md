@@ -11,7 +11,7 @@
 
 ### Laravel setup
 
-Requires PHP 8.2 or later and Laravel 11, 12 or 13 (Laravel 13 requires PHP 8.3 or later).
+Requires PHP 8.2 or later and Laravel 12 or 13 (Laravel 13 requires PHP 8.3 or later).
 
 Require this package in the `composer.json` of your Laravel project.
 
@@ -78,7 +78,7 @@ Please make sure all tests run successfully before submitting a PR.
 
 ### Testing
 
-CI tests Laravel 11–13 with stable dependencies. The Laravel 11 jobs allow specific framework advisories during dependency resolution so compatibility can still be tested; the audit step continues to report them. These exceptions are confined to CI and do not change security settings in applications using this package.
+CI tests Laravel 12 and 13 with the lowest and latest stable dependencies across their supported PHP versions. Laravel 11 is no longer supported because its security support ended on March 12, 2026.
 
 Azure tests use the real Azure OSS SDK against a local HTTP fixture to verify block staging, commit requests, prefixes and MIME headers without an Azure account.
 
