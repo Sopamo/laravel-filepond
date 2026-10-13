@@ -8,7 +8,6 @@ use Sopamo\LaravelFilepond\Uploads\ChunkPart;
 
 class ChunkCollectionTest extends TestCase
 {
-    /** @test */
     public function test_out_of_order_contiguous_chunks_are_complete()
     {
         $chunkCollection = new ChunkCollection([
@@ -20,7 +19,6 @@ class ChunkCollectionTest extends TestCase
         $this->assertSame(['patch.0', 'patch.6'], $chunkCollection->orderedReferences());
     }
 
-    /** @test */
     public function test_chunks_with_a_gap_are_not_complete()
     {
         $chunkCollection = new ChunkCollection([
@@ -31,7 +29,6 @@ class ChunkCollectionTest extends TestCase
         $this->assertFalse($chunkCollection->isComplete(11));
     }
 
-    /** @test */
     public function test_chunks_with_an_overlap_are_not_complete()
     {
         $chunkCollection = new ChunkCollection([
@@ -42,7 +39,6 @@ class ChunkCollectionTest extends TestCase
         $this->assertFalse($chunkCollection->isComplete(11));
     }
 
-    /** @test */
     public function test_zero_sized_chunks_are_not_complete()
     {
         $chunkCollection = new ChunkCollection([
@@ -52,7 +48,6 @@ class ChunkCollectionTest extends TestCase
         $this->assertFalse($chunkCollection->isComplete(0));
     }
 
-    /** @test */
     public function test_negative_chunk_offset_is_rejected()
     {
         $this->expectException(\InvalidArgumentException::class);

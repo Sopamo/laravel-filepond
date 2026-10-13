@@ -8,7 +8,6 @@ use Sopamo\LaravelFilepond\Uploads\ChunkPart;
 
 class AzureChunkManifestTest extends TestCase
 {
-    /** @test */
     public function test_manifest_round_trips_typed_chunk_parts()
     {
         $manifest = AzureChunkManifest::empty()
@@ -22,7 +21,6 @@ class AzureChunkManifestTest extends TestCase
         $this->assertSame(['block-0', 'block-6'], $decodedManifest->toChunkCollection()->orderedReferences());
     }
 
-    /** @test */
     public function test_invalid_manifest_payload_is_rejected()
     {
         $this->expectException(\RuntimeException::class);

@@ -9,7 +9,6 @@ use Sopamo\LaravelFilepond\Tests\TestCase;
 
 class SingleFileUploadTest extends TestCase
 {
-    /** @test */
     public function test_normal_file_upload()
     {
         $tmpPath = config('filepond.temporary_files_path', 'filepond');
@@ -34,7 +33,6 @@ class SingleFileUploadTest extends TestCase
         Storage::disk($diskName)->assertExists($pathFromServerId);
     }
 
-    /** @test */
     public function test_delete_succeeds_for_a_normal_file_upload_without_a_chunk_directory()
     {
         $diskName = config('filepond.temporary_files_disk', 'local');
@@ -66,7 +64,6 @@ class SingleFileUploadTest extends TestCase
         Storage::disk($diskName)->assertMissing($pathFromServerId);
     }
 
-    /** @test */
     public function test_delete_returns_bad_request_for_an_invalid_server_id()
     {
         $deleteResponse = $this->call(
